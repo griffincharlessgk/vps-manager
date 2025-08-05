@@ -1,0 +1,234 @@
+{% extends 'base.html' %}
+{% block content %}
+<h1 class="mb-4">Danh sách tài khoản</h1>
+<div class="row mb-3">
+  <div class="col-md-4">
+    <input type="text" class="form-control" id="search-acc" placeholder="Tìm kiếm theo dịch vụ, tên đăng nhập...">
+  </div>
+  <div class="col-md-3">
+    <input type="text" class="form-control" id="filter-service" placeholder="Lọc theo dịch vụ...">
+  </div>
+  <div class="col-md-2">
+    <select class="form-select" id="rows-per-page-acc">
+      <option value="10">10 dòng/trang</option>
+      <option value="20">20 dòng/trang</option>
+      <option value="50">50 dòng/trang</option>
+    </select>
+  </div>
+</div>
+<div class="card mb-4 admin-only">
+  <div class="card-body">
+    <form id="acc-form">
+      <input type="hidden" id="acc-id" name="id">
+      <div class="row g-2 align-items-end">
+        <div class="col-md-2">
+          <label class="form-label">Dịch vụ</label>
+          <input type="text" class="form-control" id="acc-service" name="service" required>
+        </div>
+        <div class="col-md-2">
+          <label class="form-label">Tên đăng nhập</label>
+          <input type="text" class="form-control" id="acc-username" name="username" required>
+        </div>
+        <div class="col-md-2">
+          <label class="form-label">Mật khẩu</label>
+          <input type="text" class="form-control" id="acc-password" name="password">
+        </div>
+        <div class="col-md-3">
+          <label class="form-label">Ngày hết hạn</label>
+          <input type="date" class="form-control" id="acc-expiry" name="expiry">
+        </div>
+        <div class="col-md-3">
+          <button type="submit" class="btn btn-primary" id="acc-submit">Thêm tài khoản</button>
+          <button type="button" class="btn btn-secondary d-none" id="acc-cancel">Hủy</button>
+        </div>
+      </div>
+    </form>
+  </div>
+</div>
+<table class="table table-striped" id="acc-table">
+  <thead>
+    <tr>
+      <th>ID</th>
+      <th>Dịch vụ</th>
+      <th>Tên đăng nhập</th>
+      <th>Mật khẩu</th>
+      <th>Ngày hết hạn</th>
+      <th>Hành động</th>
+    </tr>
+  </thead>
+  <tbody></tbody>
+</table>
+<nav>
+  <ul class="pagination" id="acc-pagination"></ul>
+</nav>
+<!-- Modal xác nhận xóa -->
+<div class="modal fade" id="deleteAccModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Xác nhận xóa tài khoản</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <p>Bạn chắc chắn muốn xóa tài khoản <b id="del-acc-username"></b> (ID: <span id="del-acc-id"></span>)?</p>
+        <p>Nhập lại <b>ID tài khoản</b> để xác nhận:</p>
+        <input type="text" class="form-control" id="confirm-del-acc-id" placeholder="Nhập ID tài khoản">
+        <div class="invalid-feedback">ID không khớp!</div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Hủy</button>
+        <button type="button" class="btn btn-danger" id="confirm-delete-acc-btn" disabled>Xóa</button>
+      </div>
+    </div>
+  </div>
+</div>
+<script>
+let accData = [];
+let currentPageAcc = 1;
+let rowsPerPageAcc = 10;
+
+function filterAccounts() {
+  const search = document.getElementById('search-acc').value.toLowerCase();
+  const serviceFilter = document.getElementById('filter-service').value.toLowerCase();
+  return accData.filter(acc => {
+    let ok = true;
+    if (search) {
+      ok = (acc.service && acc.service.toLowerCase().includes(search)) ||
+           (acc.username && acc.username.toLowerCase().includes(search));
+    }
+    if (ok && serviceFilter) {
+      ok = acc.service && acc.service.toLowerCase().includes(serviceFilter);
+    }
+    return ok;
+  });
+}
+
+function renderAccTable() {
+  const tbody = document.querySelector('#acc-table tbody');
+  tbody.innerHTML = '';
+  const filtered = filterAccounts();
+  const total = filtered.length;
+  rowsPerPageAcc = parseInt(document.getElementById('rows-per-page-acc').value);
+  const start = (currentPageAcc-1)*rowsPerPageAcc;
+  const end = start + rowsPerPageAcc;
+  filtered.slice(start, end).forEach(acc => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${acc.id}</td>
+      <td>${acc.service || ''}</td>
+      <td>${acc.username || ''}</td>
+      <td>${acc.password || ''}</td>
+      <td>${acc.expiry || ''}</td>
+      <td>
+        <button class="btn btn-sm btn-warning me-1 admin-only" onclick='editAcc(${JSON.stringify(acc)})'>Sửa</button>
+        <button class="btn btn-sm btn-danger admin-only" onclick='showDeleteAccModal("${acc.id}", "${acc.username||''}")'>Xóa</button>
+      </td>
+    `;
+    tbody.appendChild(tr);
+  });
+  renderAccPagination(total);
+  showAdminActions();
+}
+
+function renderAccPagination(total) {
+  const ul = document.getElementById('acc-pagination');
+  ul.innerHTML = '';
+  const pages = Math.ceil(total/rowsPerPageAcc);
+  for (let i=1; i<=pages; i++) {
+    const li = document.createElement('li');
+    li.className = 'page-item'+(i===currentPageAcc?' active':'');
+    li.innerHTML = `<a class="page-link" href="#">${i}</a>`;
+    li.onclick = function(e){ e.preventDefault(); currentPageAcc=i; renderAccTable(); };
+    ul.appendChild(li);
+  }
+}
+
+function loadAccounts() {
+  fetch('/api/accounts').then(r=>r.json()).then(data=>{
+    accData = data;
+    currentPageAcc = 1;
+    renderAccTable();
+  });
+}
+
+document.getElementById('search-acc').oninput = function(){ currentPageAcc=1; renderAccTable(); };
+document.getElementById('filter-service').oninput = function(){ currentPageAcc=1; renderAccTable(); };
+document.getElementById('rows-per-page-acc').onchange = function(){ currentPageAcc=1; renderAccTable(); };
+
+function editAcc(acc) {
+  document.getElementById('acc-id').value = acc.id;
+  document.getElementById('acc-service').value = acc.service || '';
+  document.getElementById('acc-username').value = acc.username || '';
+  document.getElementById('acc-password').value = acc.password || '';
+  document.getElementById('acc-expiry').value = acc.expiry || '';
+  document.getElementById('acc-submit').textContent = 'Cập nhật tài khoản';
+  document.getElementById('acc-cancel').classList.remove('d-none');
+}
+
+document.getElementById('acc-cancel').onclick = function() {
+  document.getElementById('acc-form').reset();
+  document.getElementById('acc-id').value = '';
+  document.getElementById('acc-submit').textContent = 'Thêm tài khoản';
+  this.classList.add('d-none');
+};
+
+document.getElementById('acc-form').onsubmit = function(e) {
+  e.preventDefault();
+  const id = document.getElementById('acc-id').value;
+  const service = document.getElementById('acc-service').value;
+  const username = document.getElementById('acc-username').value;
+  const password = document.getElementById('acc-password').value;
+  const expiry = document.getElementById('acc-expiry').value;
+  let acc = { id: id || crypto.randomUUID(), service, username, password, expiry };
+  if (!id) {
+    fetch('/api/accounts', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(acc)
+    }).then(()=>{ loadAccounts(); this.reset(); });
+  } else {
+    fetch('/api/accounts/' + id, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(acc)
+    }).then(()=>{
+      loadAccounts();
+      this.reset();
+      document.getElementById('acc-id').value = '';
+      document.getElementById('acc-submit').textContent = 'Thêm tài khoản';
+      document.getElementById('acc-cancel').classList.add('d-none');
+    });
+  }
+};
+
+// Modal xác nhận xóa nâng cao
+let deleteAccId = '';
+function showDeleteAccModal(id, username) {
+  deleteAccId = id;
+  document.getElementById('del-acc-username').textContent = username;
+  document.getElementById('del-acc-id').textContent = id;
+  document.getElementById('confirm-del-acc-id').value = '';
+  document.getElementById('confirm-del-acc-id').classList.remove('is-invalid');
+  document.getElementById('confirm-delete-acc-btn').disabled = true;
+  var modal = new bootstrap.Modal(document.getElementById('deleteAccModal'));
+  modal.show();
+}
+document.getElementById('confirm-del-acc-id').oninput = function() {
+  if (this.value === deleteAccId) {
+    this.classList.remove('is-invalid');
+    document.getElementById('confirm-delete-acc-btn').disabled = false;
+  } else {
+    this.classList.add('is-invalid');
+    document.getElementById('confirm-delete-acc-btn').disabled = true;
+  }
+};
+document.getElementById('confirm-delete-acc-btn').onclick = function() {
+  fetch('/api/accounts/' + deleteAccId, { method: 'DELETE' })
+    .then(()=>{ loadAccounts(); });
+  var modal = bootstrap.Modal.getInstance(document.getElementById('deleteAccModal'));
+  modal.hide();
+};
+
+loadAccounts();
+</script>
+{% endblock %} 

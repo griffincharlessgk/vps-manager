@@ -1,0 +1,205 @@
+{% extends 'base.html' %}
+{% block content %}
+<h2 class="mb-4">Quản lý user</h2>
+<div class="card mb-4" style="max-width:500px">
+  <div class="card-body">
+    <form id="add-user-form">
+      <div class="mb-3">
+        <label class="form-label">Tên đăng nhập</label>
+        <input type="text" class="form-control" id="new-username" required>
+      </div>
+      <div class="mb-3">
+        <label class="form-label">Mật khẩu</label>
+        <input type="password" class="form-control" id="new-password" required>
+      </div>
+      <div class="mb-3">
+        <label class="form-label">Quyền</label>
+        <select class="form-select" id="new-role">
+          <option value="user">User</option>
+          <option value="admin">Admin</option>
+        </select>
+      </div>
+      <button type="submit" class="btn btn-primary">Thêm user</button>
+    </form>
+    <div id="add-user-result"></div>
+  </div>
+</div>
+<div class="row mb-3">
+  <div class="col-md-4">
+    <input type="text" class="form-control" id="user-search" placeholder="Tìm kiếm theo username, quyền...">
+  </div>
+  <div class="col-md-2">
+    <select class="form-select" id="user-rows-per-page">
+      <option value="5">5 dòng/trang</option>
+      <option value="10" selected>10 dòng/trang</option>
+      <option value="20">20 dòng/trang</option>
+    </select>
+  </div>
+</div>
+<h5>Danh sách user</h5>
+<table class="table table-bordered" id="users-table">
+  <thead><tr><th>ID</th><th>Username</th><th>Quyền</th><th>Hành động</th></tr></thead>
+  <tbody></tbody>
+</table>
+<nav><ul class="pagination" id="user-pagination"></ul></nav>
+<!-- Modal sửa user -->
+<div class="modal fade" id="editUserModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Sửa user</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <form id="edit-user-form">
+          <input type="hidden" id="edit-user-id">
+          <div class="mb-3">
+            <label class="form-label">Mật khẩu mới (bỏ trống nếu không đổi)</label>
+            <input type="password" class="form-control" id="edit-password">
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Quyền</label>
+            <select class="form-select" id="edit-role">
+              <option value="user">User</option>
+              <option value="admin">Admin</option>
+            </select>
+          </div>
+          <button type="submit" class="btn btn-primary">Lưu thay đổi</button>
+        </form>
+        <div id="edit-user-result"></div>
+      </div>
+    </div>
+  </div>
+</div>
+<!-- Modal xác nhận xóa user -->
+<div class="modal fade" id="deleteUserModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Xác nhận xóa user</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <p>Bạn chắc chắn muốn xóa user <b id="del-user-name"></b> (ID: <span id="del-user-id"></span>)?</p>
+        <button type="button" class="btn btn-danger" id="confirm-delete-user-btn">Xóa</button>
+      </div>
+    </div>
+  </div>
+</div>
+<script>
+let userData = [];
+let userSearch = '';
+let userCurrentPage = 1;
+let userRowsPerPage = 10;
+let deleteUserId = '';
+function filterUsers() {
+  const search = userSearch.toLowerCase();
+  return userData.filter(u => {
+    if (!search) return true;
+    return (u.username && u.username.toLowerCase().includes(search)) ||
+           (u.role && u.role.toLowerCase().includes(search));
+  });
+}
+function renderUserTable() {
+  const tbody = document.querySelector('#users-table tbody');
+  tbody.innerHTML = '';
+  const filtered = filterUsers();
+  const total = filtered.length;
+  userRowsPerPage = parseInt(document.getElementById('user-rows-per-page').value);
+  const start = (userCurrentPage-1)*userRowsPerPage;
+  const end = start + userRowsPerPage;
+  filtered.slice(start, end).forEach(u => {
+    tbody.innerHTML += `<tr><td>${u.id}</td><td>${u.username}</td><td>${u.role}</td><td>
+      <button class='btn btn-sm btn-warning me-1' onclick='showEditUserModal(${u.id},"${u.username}","${u.role}")'>Sửa</button>
+      <button class='btn btn-sm btn-danger' onclick='showDeleteUserModal(${u.id},"${u.username}")'>Xóa</button>
+    </td></tr>`;
+  });
+  // Phân trang
+  const ul = document.getElementById('user-pagination');
+  ul.innerHTML = '';
+  const pages = Math.ceil(total/userRowsPerPage);
+  for(let i=1;i<=pages;i++) {
+    const li = document.createElement('li');
+    li.className = 'page-item'+(i===userCurrentPage?' active':'');
+    li.innerHTML = `<a class="page-link" href="#">${i}</a>`;
+    li.onclick = function(e){ e.preventDefault(); userCurrentPage=i; renderUserTable(); };
+    ul.appendChild(li);
+  }
+}
+document.getElementById('user-search').oninput = function(){ userSearch=this.value; userCurrentPage=1; renderUserTable(); };
+document.getElementById('user-rows-per-page').onchange = function(){ userCurrentPage=1; renderUserTable(); };
+async function loadUsers() {
+  const res = await fetch('/api/users');
+  const json = await res.json();
+  if(json.status==='success') {
+    userData = json.users;
+    userCurrentPage = 1;
+    renderUserTable();
+  }
+}
+document.getElementById('add-user-form').onsubmit = async function(e) {
+  e.preventDefault();
+  const username = document.getElementById('new-username').value;
+  const password = document.getElementById('new-password').value;
+  const role = document.getElementById('new-role').value;
+  const res = await fetch('/api/users', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({username, password, role})
+  });
+  const json = await res.json();
+  const resultDiv = document.getElementById('add-user-result');
+  if(json.status==='success') {
+    resultDiv.innerHTML = '<div class="alert alert-success">Đã thêm user!</div>';
+    this.reset();
+    loadUsers();
+  } else {
+    resultDiv.innerHTML = `<div class='alert alert-danger'>${json.error}</div>`;
+  }
+};
+window.showEditUserModal = function(id, username, role) {
+  document.getElementById('edit-user-id').value = id;
+  document.getElementById('edit-password').value = '';
+  document.getElementById('edit-role').value = role;
+  document.getElementById('edit-user-result').innerHTML = '';
+  new bootstrap.Modal(document.getElementById('editUserModal')).show();
+};
+document.getElementById('edit-user-form').onsubmit = async function(e) {
+  e.preventDefault();
+  const id = document.getElementById('edit-user-id').value;
+  const password = document.getElementById('edit-password').value;
+  const role = document.getElementById('edit-role').value;
+  const res = await fetch('/api/users/'+id, {
+    method: 'PUT',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({password, role})
+  });
+  const json = await res.json();
+  const resultDiv = document.getElementById('edit-user-result');
+  if(json.status==='success') {
+    resultDiv.innerHTML = '<div class="alert alert-success">Đã cập nhật user!</div>';
+    loadUsers();
+  } else {
+    resultDiv.innerHTML = `<div class='alert alert-danger'>${json.error}</div>`;
+  }
+};
+window.showDeleteUserModal = function(id, username) {
+  deleteUserId = id;
+  document.getElementById('del-user-name').textContent = username;
+  document.getElementById('del-user-id').textContent = id;
+  new bootstrap.Modal(document.getElementById('deleteUserModal')).show();
+};
+document.getElementById('confirm-delete-user-btn').onclick = async function() {
+  if(!deleteUserId) return;
+  const res = await fetch('/api/users/'+deleteUserId, {method:'DELETE'});
+  const json = await res.json();
+  if(json.status==='success') {
+    loadUsers();
+    bootstrap.Modal.getInstance(document.getElementById('deleteUserModal')).hide();
+  } else {
+    alert(json.error);
+  }
+};
+loadUsers();
+</script>
+{% endblock %} 

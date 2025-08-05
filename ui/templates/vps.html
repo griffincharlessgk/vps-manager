@@ -1,0 +1,257 @@
+{% extends 'base.html' %}
+{% block content %}
+<h1 class="mb-4">Danh sách VPS</h1>
+<div class="row mb-3">
+  <div class="col-md-4">
+    <input type="text" class="form-control" id="search-vps" placeholder="Tìm kiếm theo tên, dịch vụ hoặc IP...">
+  </div>
+  <div class="col-md-3">
+    <select class="form-select" id="filter-status">
+      <option value="">Tất cả trạng thái</option>
+      <option value="active">Còn hạn</option>
+      <option value="expired">Đã hết hạn</option>
+      <option value="expiring">Sắp hết hạn (<=3 ngày)</option>
+    </select>
+  </div>
+  <div class="col-md-2">
+    <select class="form-select" id="rows-per-page">
+      <option value="10">10 dòng/trang</option>
+      <option value="20">20 dòng/trang</option>
+      <option value="50">50 dòng/trang</option>
+    </select>
+  </div>
+</div>
+<div class="card mb-4 admin-only">
+  <div class="card-body">
+    <form id="vps-form">
+      <input type="hidden" id="vps-id" name="id">
+      <div class="row g-2 align-items-end">
+        <div class="col-md-2">
+          <label class="form-label">Tên dịch vụ</label>
+          <input type="text" class="form-control" id="vps-service" name="service" required>
+        </div>
+        <div class="col-md-3">
+          <label class="form-label">Tên VPS</label>
+          <input type="text" class="form-control" id="vps-name" name="name" required>
+        </div>
+        <div class="col-md-3">
+          <label class="form-label">IP</label>
+          <input type="text" class="form-control" id="vps-ip" name="ip">
+        </div>
+        <div class="col-md-3">
+          <label class="form-label">Ngày hết hạn</label>
+          <input type="date" class="form-control" id="vps-expiry" name="expiry">
+        </div>
+        <div class="col-md-1">
+          <button type="submit" class="btn btn-primary" id="vps-submit">Thêm VPS</button>
+          <button type="button" class="btn btn-secondary d-none" id="vps-cancel">Hủy</button>
+        </div>
+      </div>
+    </form>
+  </div>
+</div>
+<table class="table table-striped" id="vps-table">
+  <thead>
+    <tr>
+      <th>ID</th>
+      <th>Tên dịch vụ</th>
+      <th>Tên VPS</th>
+      <th>IP</th>
+      <th>Ngày hết hạn</th>
+      <th>Trạng thái</th>
+      <th>Hành động</th>
+    </tr>
+  </thead>
+  <tbody></tbody>
+</table>
+<nav>
+  <ul class="pagination" id="vps-pagination"></ul>
+</nav>
+<!-- Modal xác nhận xóa -->
+<div class="modal fade" id="deleteModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Xác nhận xóa VPS</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <p>Bạn chắc chắn muốn xóa VPS <b id="del-vps-name"></b> (ID: <span id="del-vps-id"></span>)?</p>
+        <p>Nhập lại <b>ID VPS</b> để xác nhận:</p>
+        <input type="text" class="form-control" id="confirm-del-id" placeholder="Nhập ID VPS">
+        <div class="invalid-feedback">ID không khớp!</div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Hủy</button>
+        <button type="button" class="btn btn-danger" id="confirm-delete-btn" disabled>Xóa</button>
+      </div>
+    </div>
+  </div>
+</div>
+<script>
+let vpsData = [];
+let currentPage = 1;
+let rowsPerPage = 10;
+
+function getStatus(expiry) {
+  if (!expiry) return '';
+  const today = new Date();
+  const exp = new Date(expiry);
+  const diff = Math.ceil((exp - today) / (1000*60*60*24));
+  if (diff < 0) return '<span class="badge bg-danger">Đã hết hạn</span>';
+  if (diff <= 3) return '<span class="badge bg-warning text-dark">Sắp hết hạn</span>';
+  return '<span class="badge bg-success">Còn hạn</span>';
+}
+
+function filterVps() {
+  const search = document.getElementById('search-vps').value.toLowerCase();
+  const status = document.getElementById('filter-status').value;
+  return vpsData.filter(vps => {
+    let ok = true;
+    if (search) {
+      ok = (vps.name && vps.name.toLowerCase().includes(search)) ||
+           (vps.ip && vps.ip.toLowerCase().includes(search)) ||
+           (vps.service && vps.service.toLowerCase().includes(search));
+    }
+    if (ok && status) {
+      const today = new Date();
+      const exp = new Date(vps.expiry);
+      const diff = Math.ceil((exp - today) / (1000*60*60*24));
+      if (status === 'active') ok = diff > 3;
+      if (status === 'expired') ok = diff < 0;
+      if (status === 'expiring') ok = diff >= 0 && diff <= 3;
+    }
+    return ok;
+  });
+}
+
+function renderVpsTable() {
+  const tbody = document.querySelector('#vps-table tbody');
+  tbody.innerHTML = '';
+  const filtered = filterVps();
+  const total = filtered.length;
+  rowsPerPage = parseInt(document.getElementById('rows-per-page').value);
+  const start = (currentPage-1)*rowsPerPage;
+  const end = start + rowsPerPage;
+  filtered.slice(start, end).forEach(vps => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${vps.id}</td>
+      <td>${vps.service || ''}</td>
+      <td>${vps.name || ''}</td>
+      <td>${vps.ip || ''}</td>
+      <td>${vps.expiry || ''}</td>
+      <td>${getStatus(vps.expiry)}</td>
+      <td>
+        <button class="btn btn-sm btn-warning me-1 admin-only" onclick='editVps(${JSON.stringify(vps)})'>Sửa</button>
+        <button class="btn btn-sm btn-danger admin-only" onclick='showDeleteModal("${vps.id}", "${vps.name||''}")'>Xóa</button>
+      </td>
+    `;
+    tbody.appendChild(tr);
+  });
+  renderPagination(total);
+  showAdminActions();
+}
+
+function renderPagination(total) {
+  const ul = document.getElementById('vps-pagination');
+  ul.innerHTML = '';
+  const pages = Math.ceil(total/rowsPerPage);
+  for (let i=1; i<=pages; i++) {
+    const li = document.createElement('li');
+    li.className = 'page-item'+(i===currentPage?' active':'');
+    li.innerHTML = `<a class="page-link" href="#">${i}</a>`;
+    li.onclick = function(e){ e.preventDefault(); currentPage=i; renderVpsTable(); };
+    ul.appendChild(li);
+  }
+}
+
+function loadVps() {
+  fetch('/api/vps').then(r=>r.json()).then(data=>{
+    vpsData = data;
+    currentPage = 1;
+    renderVpsTable();
+  });
+}
+
+document.getElementById('search-vps').oninput = function(){ currentPage=1; renderVpsTable(); };
+document.getElementById('filter-status').onchange = function(){ currentPage=1; renderVpsTable(); };
+document.getElementById('rows-per-page').onchange = function(){ currentPage=1; renderVpsTable(); };
+
+function editVps(vps) {
+  document.getElementById('vps-id').value = vps.id;
+  document.getElementById('vps-service').value = vps.service || '';
+  document.getElementById('vps-name').value = vps.name || '';
+  document.getElementById('vps-ip').value = vps.ip || '';
+  document.getElementById('vps-expiry').value = vps.expiry || '';
+  document.getElementById('vps-submit').textContent = 'Cập nhật VPS';
+  document.getElementById('vps-cancel').classList.remove('d-none');
+}
+
+document.getElementById('vps-cancel').onclick = function() {
+  document.getElementById('vps-form').reset();
+  document.getElementById('vps-id').value = '';
+  document.getElementById('vps-submit').textContent = 'Thêm VPS';
+  this.classList.add('d-none');
+};
+
+document.getElementById('vps-form').onsubmit = function(e) {
+  e.preventDefault();
+  const id = document.getElementById('vps-id').value;
+  const service = document.getElementById('vps-service').value;
+  const name = document.getElementById('vps-name').value;
+  const ip = document.getElementById('vps-ip').value;
+  const expiry = document.getElementById('vps-expiry').value;
+  let vps = { id: id || crypto.randomUUID(), service, name, ip, expiry };
+  if (!id) {
+    fetch('/api/vps', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(vps)
+    }).then(()=>{ loadVps(); this.reset(); });
+  } else {
+    fetch('/api/vps/' + id, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(vps)
+    }).then(()=>{
+      loadVps();
+      this.reset();
+      document.getElementById('vps-id').value = '';
+      document.getElementById('vps-submit').textContent = 'Thêm VPS';
+      document.getElementById('vps-cancel').classList.add('d-none');
+    });
+  }
+};
+
+// Modal xác nhận xóa nâng cao
+let deleteVpsId = '';
+function showDeleteModal(id, name) {
+  deleteVpsId = id;
+  document.getElementById('del-vps-name').textContent = name;
+  document.getElementById('del-vps-id').textContent = id;
+  document.getElementById('confirm-del-id').value = '';
+  document.getElementById('confirm-del-id').classList.remove('is-invalid');
+  document.getElementById('confirm-delete-btn').disabled = true;
+  var modal = new bootstrap.Modal(document.getElementById('deleteModal'));
+  modal.show();
+}
+document.getElementById('confirm-del-id').oninput = function() {
+  if (this.value === deleteVpsId) {
+    this.classList.remove('is-invalid');
+    document.getElementById('confirm-delete-btn').disabled = false;
+  } else {
+    this.classList.add('is-invalid');
+    document.getElementById('confirm-delete-btn').disabled = true;
+  }
+};
+document.getElementById('confirm-delete-btn').onclick = function() {
+  fetch('/api/vps/' + deleteVpsId, { method: 'DELETE' })
+    .then(()=>{ loadVps(); });
+  var modal = bootstrap.Modal.getInstance(document.getElementById('deleteModal'));
+  modal.hide();
+};
+
+loadVps();
+</script>
+{% endblock %} 

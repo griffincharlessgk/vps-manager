@@ -1,0 +1,360 @@
+{% extends 'base.html' %}
+{% block content %}
+<h2 class="mb-4">Quản lý BitLaunch </h2>
+
+<!-- Navigation tabs -->
+<ul class="nav nav-tabs mb-4" id="bitlaunchTabs" role="tablist">
+  <li class="nav-item" role="presentation">
+    <button class="nav-link active" id="apis-tab" data-bs-toggle="tab" data-bs-target="#apis" type="button" role="tab">
+      API Keys
+    </button>
+  </li>
+  <li class="nav-item" role="presentation">
+    <button class="nav-link" id="vps-tab" data-bs-toggle="tab" data-bs-target="#vps" type="button" role="tab">
+      VPS Servers
+    </button>
+  </li>
+</ul>
+
+<!-- Tab content -->
+<div class="tab-content" id="bitlaunchTabContent">
+  <!-- API Keys Tab -->
+  <div class="tab-pane fade show active" id="apis" role="tabpanel">
+    <!-- Form nhập API Key mới -->
+    <div class="card mb-4">
+      <div class="card-body">
+        <h5 class="card-title">Thêm API Key mới</h5>
+        <form id="add-api-form" class="row g-3">
+          <div class="col-md-6">
+            <label class="form-label">API Key</label>
+            <input type="password" class="form-control" id="new-api-key" placeholder="Nhập API key của bạn" required>
+          </div>
+          <div class="col-md-3">
+            <label class="form-label">Tần suất cập nhật (ngày)</label>
+            <select class="form-select" id="update-frequency">
+              <option value="1">1 ngày</option>
+              <option value="3">3 ngày</option>
+              <option value="7">7 ngày</option>
+              <option value="30">30 ngày</option>
+            </select>
+          </div>
+          <div class="col-md-3 d-flex align-items-end">
+            <button type="submit" class="btn btn-primary">Thêm API Key</button>
+          </div>
+        </form>
+        <div id="add-api-result"></div>
+      </div>
+    </div>
+
+    <!-- Danh sách API Keys đã lưu -->
+    <div class="card mb-4">
+      <div class="card-body">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+          <h5 class="card-title mb-0">Danh sách API Keys</h5>
+          <button class="btn btn-success" id="update-all-btn">Cập nhật tất cả</button>
+        </div>
+        <div id="apis-list"></div>
+      </div>
+    </div>
+
+    <!-- Thông tin chi tiết -->
+    <div class="card mb-4">
+      <div class="card-body">
+        <h5 class="card-title">Thông tin tài khoản</h5>
+        <div id="account-details"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- VPS Tab -->
+  <div class="tab-pane fade" id="vps" role="tabpanel">
+    <div class="card mb-4">
+      <div class="card-body">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+          <h5 class="card-title mb-0">Danh sách VPS Servers</h5>
+          <button class="btn btn-success" id="update-all-vps-btn">Cập nhật tất cả VPS</button>
+        </div>
+        <div id="vps-list"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal chi tiết VPS -->
+<div class="modal fade" id="vpsDetailModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Chi tiết VPS</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body" id="vps-detail-body"></div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal xác nhận xóa VPS -->
+<div class="modal fade" id="vpsDeleteModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Xác nhận xóa VPS</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <p>Bạn chắc chắn muốn xóa VPS <b id="del-vps-name"></b>?</p>
+        <button type="button" class="btn btn-danger" id="confirm-delete-vps-btn">Xóa</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// Load danh sách API keys khi trang load
+async function loadApis() {
+  const res = await fetch('/api/bitlaunch-apis');
+  const json = await res.json();
+  const apisListDiv = document.getElementById('apis-list');
+  
+  if(json.status === 'success') {
+    if(json.apis.length === 0) {
+      apisListDiv.innerHTML = '<div class="alert alert-info">Chưa có API key nào được lưu.</div>';
+      return;
+    }
+    
+    let html = '<div class="table-responsive"><table class="table table-striped">';
+    html += '<thead><tr><th>Email</th><th>Balance</th><th>Limit</th><th>Cập nhật cuối</th><th>Tần suất</th><th>Hành động</th></tr></thead><tbody>';
+    
+    json.apis.forEach(api => {
+      const lastUpdated = api.last_updated ? new Date(api.last_updated).toLocaleString('vi-VN') : 'Chưa cập nhật';
+      html += `<tr>
+        <td>${api.email}</td>
+        <td>$${api.balance || 0}</td>
+        <td>$${api.limit || 0}</td>
+        <td>${lastUpdated}</td>
+        <td>${api.update_frequency} ngày</td>
+        <td>
+          <button class="btn btn-sm btn-info me-1" onclick="updateApiInfo(${api.id})">Cập nhật</button>
+          <button class="btn btn-sm btn-warning me-1" onclick="updateVpsForApi(${api.id})">Cập nhật VPS</button>
+          <button class="btn btn-sm btn-danger" onclick="deleteApi(${api.id})">Xóa</button>
+        </td>
+      </tr>`;
+    });
+    
+    html += '</tbody></table></div>';
+    apisListDiv.innerHTML = html;
+  } else {
+    apisListDiv.innerHTML = `<div class="alert alert-danger">${json.error}</div>`;
+  }
+}
+
+// Load danh sách VPS
+async function loadVps() {
+  const res = await fetch('/api/bitlaunch-vps');
+  const json = await res.json();
+  const vpsListDiv = document.getElementById('vps-list');
+  
+  if(json.status === 'success') {
+    if(json.vps.length === 0) {
+      vpsListDiv.innerHTML = '<div class="alert alert-info">Chưa có VPS nào được lưu. Hãy cập nhật VPS từ API keys.</div>';
+      return;
+    }
+    
+    let html = '<div class="table-responsive"><table class="table table-striped">';
+    html += '<thead><tr><th>Email</th><th>Tên VPS</th><th>Trạng thái</th><th>IP</th><th>Location</th><th>Plan</th><th>Hành động</th></tr></thead><tbody>';
+    
+    json.vps.forEach(vps => {
+      const statusClass = vps.status === 'running' ? 'text-success' : 'text-warning';
+      html += `<tr>
+        <td>${vps.email}</td>
+        <td>${vps.name || 'N/A'}</td>
+        <td><span class="${statusClass}">${vps.status || 'N/A'}</span></td>
+        <td>${vps.ip_address || 'N/A'}</td>
+        <td>${vps.location || 'N/A'}</td>
+        <td>${vps.plan || 'N/A'}</td>
+        <td>
+          <button class="btn btn-sm btn-info me-1" onclick="showVpsDetail(${vps.id})">Chi tiết</button>
+          <button class="btn btn-sm btn-danger" onclick="showDeleteVpsModal(${vps.id}, '${vps.name || 'N/A'}')">Xóa</button>
+        </td>
+      </tr>`;
+    });
+    
+    html += '</tbody></table></div>';
+    vpsListDiv.innerHTML = html;
+  } else {
+    vpsListDiv.innerHTML = `<div class="alert alert-danger">${json.error}</div>`;
+  }
+}
+
+// Thêm API key mới
+document.getElementById('add-api-form').onsubmit = async function(e) {
+  e.preventDefault();
+  const apiKey = document.getElementById('new-api-key').value;
+  const frequency = document.getElementById('update-frequency').value;
+  const resultDiv = document.getElementById('add-api-result');
+  
+  const res = await fetch('/api/bitlaunch-save-api', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({
+      api_key: apiKey,
+      update_frequency: parseInt(frequency)
+    })
+  });
+  
+  const json = await res.json();
+  if(json.status === 'success') {
+    resultDiv.innerHTML = `<div class="alert alert-success">${json.message}</div>`;
+    document.getElementById('add-api-form').reset();
+    loadApis(); // Reload danh sách
+  } else {
+    resultDiv.innerHTML = `<div class="alert alert-danger">${json.error}</div>`;
+  }
+};
+
+// Cập nhật thông tin API key cụ thể
+async function updateApiInfo(apiId) {
+  const res = await fetch(`/api/bitlaunch-update-info/${apiId}`, {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'}
+  });
+  
+  const json = await res.json();
+  if(json.status === 'success') {
+    alert(json.message);
+    loadApis(); // Reload danh sách
+  } else {
+    alert(`Lỗi: ${json.error}`);
+  }
+}
+
+// Cập nhật VPS cho API key cụ thể
+async function updateVpsForApi(apiId) {
+  const res = await fetch(`/api/bitlaunch-update-vps/${apiId}`, {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'}
+  });
+  
+  const json = await res.json();
+  if(json.status === 'success') {
+    alert(json.message);
+    loadVps(); // Reload danh sách VPS
+  } else {
+    alert(`Lỗi: ${json.error}`);
+  }
+}
+
+// Xóa API key
+async function deleteApi(apiId) {
+  if(!confirm('Bạn có chắc muốn xóa API key này?')) return;
+  
+  const res = await fetch(`/api/bitlaunch-delete-api/${apiId}`, {
+    method: 'DELETE'
+  });
+  
+  const json = await res.json();
+  if(json.status === 'success') {
+    alert(json.message);
+    loadApis(); // Reload danh sách
+  } else {
+    alert(`Lỗi: ${json.error}`);
+  }
+}
+
+// Cập nhật tất cả API keys
+document.getElementById('update-all-btn').onclick = async function() {
+  const res = await fetch('/api/bitlaunch-update-all', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'}
+  });
+  
+  const json = await res.json();
+  if(json.status === 'success') {
+    alert(`${json.message}\nLỗi: ${json.errors.join(', ')}`);
+    loadApis(); // Reload danh sách
+  } else {
+    alert(`Lỗi: ${json.error}`);
+  }
+};
+
+// Cập nhật tất cả VPS
+document.getElementById('update-all-vps-btn').onclick = async function() {
+  const res = await fetch('/api/bitlaunch-update-all-vps', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'}
+  });
+  
+  const json = await res.json();
+  if(json.status === 'success') {
+    alert(`${json.message}\nLỗi: ${json.errors.join(', ')}`);
+    loadVps(); // Reload danh sách VPS
+  } else {
+    alert(`Lỗi: ${json.error}`);
+  }
+};
+
+// Hiển thị chi tiết VPS
+async function showVpsDetail(vpsId) {
+  const res = await fetch(`/api/bitlaunch-vps-detail/${vpsId}`);
+  const json = await res.json();
+  
+  if(json.status === 'success') {
+    const vps = json.vps;
+    const detailHtml = `
+      <div class="row">
+        <div class="col-md-6">
+          <p><strong>Email:</strong> ${vps.email}</p>
+          <p><strong>Tên VPS:</strong> ${vps.name || 'N/A'}</p>
+          <p><strong>Server ID:</strong> ${vps.server_id}</p>
+          <p><strong>Trạng thái:</strong> <span class="text-${vps.status === 'running' ? 'success' : 'warning'}">${vps.status || 'N/A'}</span></p>
+        </div>
+        <div class="col-md-6">
+          <p><strong>IP Address:</strong> ${vps.ip_address || 'N/A'}</p>
+          <p><strong>Location:</strong> ${vps.location || 'N/A'}</p>
+          <p><strong>Plan:</strong> ${vps.plan || 'N/A'}</p>
+          <p><strong>Cập nhật cuối:</strong> ${vps.last_updated ? new Date(vps.last_updated).toLocaleString('vi-VN') : 'N/A'}</p>
+        </div>
+      </div>
+    `;
+    document.getElementById('vps-detail-body').innerHTML = detailHtml;
+    new bootstrap.Modal(document.getElementById('vpsDetailModal')).show();
+  } else {
+    alert(`Lỗi: ${json.error}`);
+  }
+}
+
+// Hiển thị modal xác nhận xóa VPS
+let deleteVpsId = '';
+function showDeleteVpsModal(vpsId, vpsName) {
+  deleteVpsId = vpsId;
+  document.getElementById('del-vps-name').textContent = vpsName;
+  new bootstrap.Modal(document.getElementById('vpsDeleteModal')).show();
+}
+
+// Xác nhận xóa VPS
+document.getElementById('confirm-delete-vps-btn').onclick = async function() {
+  if(!deleteVpsId) return;
+  
+  const res = await fetch(`/api/bitlaunch-delete-vps/${deleteVpsId}`, {
+    method: 'DELETE'
+  });
+  
+  const json = await res.json();
+  if(json.status === 'success') {
+    alert(json.message);
+    loadVps(); // Reload danh sách VPS
+    bootstrap.Modal.getInstance(document.getElementById('vpsDeleteModal')).hide();
+  } else {
+    alert(`Lỗi: ${json.error}`);
+  }
+};
+
+// Load danh sách khi trang load
+loadApis();
+
+// Load VPS khi chuyển tab
+document.getElementById('vps-tab').addEventListener('click', function() {
+  loadVps();
+});
+</script>
+{% endblock %} 

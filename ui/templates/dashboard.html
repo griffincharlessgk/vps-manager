@@ -1,0 +1,214 @@
+{% extends 'base.html' %}
+{% block content %}
+<h1 class="mb-4">Dashboard</h1>
+
+<!-- Thông báo lỗi access denied -->
+<div id="access-denied-alert" class="alert alert-danger" style="display:none;">
+    <h5>🚫 Truy cập bị từ chối</h5>
+    <p>Bạn không có quyền truy cập trang quản lý user. Chỉ admin mới có thể truy cập tính năng này.</p>
+</div>
+
+<div class="row">
+  <div class="col-md-4">
+    <div class="card text-bg-primary mb-3">
+      <div class="card-body">
+        <h5 class="card-title">Số lượng VPS</h5>
+        <p class="card-text" id="vps-count">0</p>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-4">
+    <div class="card text-bg-success mb-3">
+      <div class="card-body">
+        <h5 class="card-title">Số lượng tài khoản</h5>
+        <p class="card-text" id="account-count">0</p>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-4">
+    <div class="card text-bg-warning mb-3">
+      <div class="card-body">
+        <h5 class="card-title">Cảnh báo hết hạn</h5>
+        <p class="card-text" id="expiry-count">0</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Thêm section hiển thị chi tiết cảnh báo hết hạn -->
+<div class="row">
+  <div class="col-12">
+    <div class="card">
+      <div class="card-header">
+        <h5 class="card-title mb-0">Chi tiết cảnh báo hết hạn</h5>
+      </div>
+      <div class="card-body">
+        <div id="expiry-details">
+          <!-- Chi tiết cảnh báo sẽ được load ở đây -->
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="row">
+  <div class="col-md-4">
+    <div class="card text-bg-info mb-3">
+      <div class="card-body">
+        <h5 class="card-title">Dịch vụ BitLaunch</h5>
+        <p class="card-text">Quản lý tài khoản, số dư, lịch sử giao dịch, nạp tiền, server, SSH key...</p>
+        <a href="/bitlaunch" class="btn btn-outline-light">Sử dụng API BitLaunch</a>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-4">
+    <div class="card text-bg-success mb-3">
+      <div class="card-body">
+        <h5 class="card-title">Dịch vụ ZingProxy</h5>
+        <p class="card-text">Quản lý tài khoản, số dư, proxy, trạng thái, ngày hết hạn qua API ZingProxy.</p>
+        <a href="/zingproxy" class="btn btn-outline-light">Sử dụng API ZingProxy</a>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// Kiểm tra URL parameters để hiển thị thông báo lỗi
+function checkUrlParams() {
+    const urlParams = new URLSearchParams(window.location.search);
+    const error = urlParams.get('error');
+    
+    if (error === 'access_denied') {
+        document.getElementById('access-denied-alert').style.display = 'block';
+        // Xóa parameter khỏi URL
+        window.history.replaceState({}, document.title, window.location.pathname);
+    }
+}
+
+// Hàm tính số ngày còn lại
+function calculateDaysUntilExpiry(expiryStr) {
+    if (!expiryStr) return null;
+    try {
+        const expiryDate = new Date(expiryStr);
+        const today = new Date();
+        const diffTime = expiryDate - today;
+        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+        return diffDays;
+    } catch {
+        return null;
+    }
+}
+
+// Hàm format message cho số ngày
+function formatDaysMessage(days) {
+    if (days > 0) {
+        return `⏰ Còn lại: ${days} ngày`;
+    } else if (days === 0) {
+        return "🚨 HẾT HẠN HÔM NAY!";
+    } else {
+        return `❌ Đã quá hạn: ${Math.abs(days)} ngày`;
+    }
+}
+
+// Hàm hiển thị chi tiết cảnh báo hết hạn
+function displayExpiryDetails() {
+    const detailsContainer = document.getElementById('expiry-details');
+    
+    // Lấy dữ liệu VPS và Accounts
+    Promise.all([
+        fetch('/api/vps').then(r => r.json()),
+        fetch('/api/accounts').then(r => r.json())
+    ]).then(([vpsData, accData]) => {
+        let allItems = [];
+        
+        // Thêm VPS vào danh sách
+        vpsData.forEach(vps => {
+            if (vps.expiry) {
+                const daysLeft = calculateDaysUntilExpiry(vps.expiry);
+                if (daysLeft !== null) {
+                    allItems.push({
+                        type: 'VPS',
+                        name: vps.name || vps.id,
+                        service: vps.service || 'Unknown',
+                        ip: vps.ip || 'N/A',
+                        daysLeft: daysLeft,
+                        expiry: vps.expiry
+                    });
+                }
+            }
+        });
+        
+        // Thêm Accounts vào danh sách
+        accData.forEach(acc => {
+            if (acc.expiry) {
+                const daysLeft = calculateDaysUntilExpiry(acc.expiry);
+                if (daysLeft !== null) {
+                    allItems.push({
+                        type: 'Account',
+                        name: acc.username || acc.id,
+                        service: acc.service || 'Unknown',
+                        daysLeft: daysLeft,
+                        expiry: acc.expiry
+                    });
+                }
+            }
+        });
+        
+        // Sắp xếp theo thời gian hết hạn (gần nhất trước)
+        allItems.sort((a, b) => a.daysLeft - b.daysLeft);
+        
+        // Hiển thị
+        if (allItems.length === 0) {
+            detailsContainer.innerHTML = '<div class="alert alert-success">✅ Không có items nào sắp hết hạn!</div>';
+        } else {
+            let html = '<div class="table-responsive"><table class="table table-striped">';
+            html += '<thead><tr><th>Loại</th><th>Tên</th><th>Service</th><th>IP</th><th>Tình trạng</th></tr></thead><tbody>';
+            
+            allItems.forEach(item => {
+                const daysMessage = formatDaysMessage(item.daysLeft);
+                const rowClass = item.daysLeft < 0 ? 'table-danger' : 
+                               item.daysLeft === 0 ? 'table-warning' : 
+                               item.daysLeft <= 3 ? 'table-info' : '';
+                
+                html += `<tr class="${rowClass}">
+                    <td><strong>${item.type}</strong></td>
+                    <td>${item.name}</td>
+                    <td>${item.service}</td>
+                    <td>${item.ip || 'N/A'}</td>
+                    <td><span class="badge bg-${item.daysLeft < 0 ? 'danger' : item.daysLeft === 0 ? 'warning' : item.daysLeft <= 3 ? 'info' : 'secondary'}">${daysMessage}</span></td>
+                </tr>`;
+            });
+            
+            html += '</tbody></table></div>';
+            detailsContainer.innerHTML = html;
+        }
+    }).catch(error => {
+        console.error('Error loading expiry details:', error);
+        detailsContainer.innerHTML = '<div class="alert alert-danger">❌ Lỗi khi tải thông tin hết hạn</div>';
+    });
+}
+
+// Cập nhật dữ liệu dashboard
+fetch('/api/vps').then(r=>r.json()).then(data=>{
+  document.getElementById('vps-count').textContent = data.length;
+});
+fetch('/api/accounts').then(r=>r.json()).then(data=>{
+  document.getElementById('account-count').textContent = data.length;
+});
+fetch('/api/expiry-warnings').then(r=>r.json()).then(data=>{
+  if (data.status === 'success') {
+    document.getElementById('expiry-count').textContent = data.warnings ? data.warnings.length : 0;
+  } else {
+    document.getElementById('expiry-count').textContent = '0';
+  }
+});
+
+// Load chi tiết cảnh báo hết hạn
+displayExpiryDetails();
+
+// Kiểm tra URL parameters khi trang load
+document.addEventListener('DOMContentLoaded', function() {
+    checkUrlParams();
+});
+</script>
+{% endblock %} 

@@ -1,0 +1,486 @@
+{% extends "base.html" %}
+
+{% block title %}Quản lý thông báo{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <h2 class="mb-4">🔔 Quản lý thông báo</h2>
+    
+    <!-- Tabs -->
+    <ul class="nav nav-tabs" id="notificationTabs" role="tablist">
+        <li class="nav-item" role="presentation">
+            <button class="nav-link active" id="settings-tab" data-bs-toggle="tab" data-bs-target="#settings" type="button" role="tab">
+                ⚙️ Cài đặt thông báo
+            </button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" id="warnings-tab" data-bs-toggle="tab" data-bs-target="#warnings" type="button" role="tab">
+                ⚠️ Cảnh báo hết hạn
+            </button>
+        </li>
+    </ul>
+    
+    <!-- Tab Content -->
+    <div class="tab-content" id="notificationTabContent">
+        <!-- Cài đặt thông báo -->
+        <div class="tab-pane fade show active" id="settings" role="tabpanel">
+            <div class="row mt-4">
+                <div class="col-md-6">
+                    <div class="card">
+                        <div class="card-header">
+                            <h5 class="card-title mb-0">📱 Cài đặt Telegram</h5>
+                        </div>
+                        <div class="card-body">
+                            <div class="mb-3">
+                                <label for="telegram-chat-id" class="form-label">Chat ID Telegram</label>
+                                <input type="text" class="form-control" id="telegram-chat-id" placeholder="1813080686">
+                                <div class="form-text">Gửi tin nhắn cho @userinfobot để lấy Chat ID</div>
+                            </div>
+                            <button class="btn btn-primary" onclick="saveTelegramChatId()">Lưu Chat ID</button>
+                            <button class="btn btn-success ms-2" onclick="testNotification()">✔ Test thông báo</button>
+                            <button class="btn btn-info ms-2" onclick="testDailySummary()">📊 Test Daily Summary</button>
+                            <!-- <button class="btn btn-warning ms-2" onclick="testTelegramSimple()">🔧 Test Telegram Simple</button> -->
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="col-md-6">
+                    <div class="card">
+                        <div class="card-header">
+                            <h5 class="card-title mb-0">⏰ Cài đặt thời gian</h5>
+                        </div>
+                        <div class="card-body">
+                            <form id="notify-settings-form">
+                                <div class="mb-3">
+                                    <label class="form-label">Số ngày cảnh báo trước khi hết hạn</label>
+                                    <select class="form-select" id="notify-days">
+                                        <option value="1">1 ngày</option>
+                                        <option value="3">3 ngày</option>
+                                        <option value="7">7 ngày</option>
+                                        <option value="14">14 ngày</option>
+                                        <option value="30">30 ngày</option>
+                                    </select>
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label">Giờ gửi thông báo</label>
+                                    <select class="form-select" id="notify-hour">
+                                        <option value="6">06:00</option>
+                                        <option value="7">07:00</option>
+                                        <option value="8">08:00</option>
+                                        <option value="9">09:00</option>
+                                        <option value="10">10:00</option>
+                                        <option value="11">11:00</option>
+                                        <option value="12">12:00</option>
+                                        <option value="13">13:00</option>
+                                        <option value="14">14:00</option>
+                                        <option value="15">15:00</option>
+                                        <option value="16">16:00</option>
+                                        <option value="17">17:00</option>
+                                        <option value="18">18:00</option>
+                                        <option value="19">19:00</option>
+                                        <option value="20">20:00</option>
+                                        <option value="21">21:00</option>
+                                        <option value="22">22:00</option>
+                                        <option value="23">23:00</option>
+                                        <option value="0">00:00</option>
+                                    </select>
+                                </div>
+                                <button type="submit" class="btn btn-primary">Lưu cài đặt</button>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Thời gian hiện tại -->
+            <div class="row mt-4">
+                <div class="col-md-6">
+                    <div class="card text-bg-info">
+                        <div class="card-header">
+                            <h5 class="card-title mb-0">⏰ Thời gian hiện tại</h5>
+                        </div>
+                        <div class="card-body">
+                            <p class="card-text" id="current-time-display">Đang tải...</p>
+                            <small class="text-light" id="next-notify-display">Đang tải...</small>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="card">
+                        <div class="card-header">
+                            <h5 class="card-title mb-0">⏳ Thời gian đến lần gửi thông báo tiếp theo</h5>
+                        </div>
+                        <div class="card-body">
+                            <div id="notify-countdown" class="text-center">
+                                <div class="spinner-border" role="status">
+                                    <span class="visually-hidden">Loading...</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Cảnh báo hết hạn -->
+        <div class="tab-pane fade" id="warnings" role="tabpanel">
+            <div class="row mt-4">
+                <div class="col-12">
+                    <div class="card">
+                        <div class="card-header d-flex justify-content-between align-items-center">
+                            <h5 class="card-title mb-0">⚠️ Danh sách cảnh báo hết hạn</h5>
+                            <div>
+                                <button class="btn btn-success me-2" onclick="sendAllNotifications()">
+                                    📤 Gửi tất cả cảnh báo
+                                </button>
+                                <button class="btn btn-primary" onclick="loadExpiryWarnings()">
+                                    🔄 Làm mới
+                                </button>
+                            </div>
+                        </div>
+                        <div class="card-body">
+                            <div id="expiry-warnings-list">
+                                <div class="text-center">
+                                    <div class="spinner-border" role="status">
+                                        <span class="visually-hidden">Loading...</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+// Load settings khi trang load
+document.addEventListener('DOMContentLoaded', function() {
+    loadNotifySettings();
+    loadTelegramSettings();
+    loadNotifyCountdown();
+    loadExpiryWarnings();
+});
+
+// Load cài đặt thông báo
+async function loadNotifySettings() {
+    try {
+        const res = await fetch('/api/notify-days');
+        const data = await res.json();
+        if (data.status === 'success') {
+            document.getElementById('notify-days').value = data.notify_days || 3;
+        }
+        
+        const res2 = await fetch('/api/notify-hour');
+        const data2 = await res2.json();
+        if (data2.status === 'success') {
+            document.getElementById('notify-hour').value = data2.notify_hour || 8;
+        }
+    } catch (error) {
+        console.error('Lỗi load settings:', error);
+    }
+}
+
+// Load cài đặt Telegram
+async function loadTelegramSettings() {
+    try {
+        const res = await fetch('/api/telegram-chat-id');
+        const data = await res.json();
+        if (data.status === 'success') {
+            document.getElementById('telegram-chat-id').value = data.telegram_chat_id || '';
+        }
+    } catch (error) {
+        console.error('Lỗi load Telegram settings:', error);
+    }
+}
+
+// Lưu cài đặt thông báo
+document.getElementById('notify-settings-form').addEventListener('submit', async function(e) {
+    e.preventDefault();
+    
+    const notifyDays = parseInt(document.getElementById('notify-days').value);
+    const notifyHour = parseInt(document.getElementById('notify-hour').value);
+    
+    try {
+        // Lưu notify days
+        const res1 = await fetch('/api/notify-days', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({notify_days: notifyDays})
+        });
+        
+        // Lưu notify hour
+        const res2 = await fetch('/api/notify-hour', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({notify_hour: notifyHour})
+        });
+        
+        const data1 = await res1.json();
+        const data2 = await res2.json();
+        
+        if (data1.status === 'success' && data2.status === 'success') {
+            alert('✅ Đã lưu cài đặt thông báo!');
+            loadNotifyCountdown(); // Reload countdown
+        } else {
+            alert('❌ Lỗi lưu cài đặt!');
+        }
+    } catch (error) {
+        console.error('Lỗi:', error);
+        alert('❌ Lỗi lưu cài đặt!');
+    }
+});
+
+// Lưu Chat ID Telegram
+async function saveTelegramChatId() {
+    const chatId = document.getElementById('telegram-chat-id').value.trim();
+    
+    try {
+        const res = await fetch('/api/telegram-chat-id', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({telegram_chat_id: chatId})
+        });
+        
+        const data = await res.json();
+        if (data.status === 'success') {
+            alert('✅ Đã lưu Chat ID Telegram!');
+        } else {
+            alert('❌ Lỗi lưu Chat ID!');
+        }
+    } catch (error) {
+        console.error('Lỗi:', error);
+        alert('❌ Lỗi lưu Chat ID!');
+    }
+}
+
+// Test thông báo
+async function testNotification() {
+    try {
+        const res = await fetch('/api/test-notification', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({})
+        });
+        
+        const data = await res.json();
+        if (data.status === 'success') {
+            alert('✅ Đã gửi thông báo test!');
+        } else {
+            alert('❌ Lỗi gửi thông báo: ' + data.error);
+        }
+    } catch (error) {
+        console.error('Lỗi:', error);
+        alert('❌ Lỗi gửi thông báo!');
+    }
+}
+
+// Test Daily Summary
+async function testDailySummary() {
+    try {
+        const res = await fetch('/api/test-daily-summary', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({})
+        });
+        
+        const data = await res.json();
+        if (data.status === 'success') {
+            alert('✅ Đã gửi thông báo Daily Summary!');
+        } else {
+            alert('❌ Lỗi gửi thông báo Daily Summary: ' + data.error);
+        }
+    } catch (error) {
+        console.error('Lỗi:', error);
+        alert('❌ Lỗi gửi thông báo Daily Summary!');
+    }
+}
+
+// Test Telegram Simple
+// async function testTelegramSimple() {
+//     try {
+//         const res = await fetch('/api/test-telegram-simple', {
+//             method: 'POST',
+//             headers: {'Content-Type': 'application/json'},
+//             body: JSON.stringify({})
+//         });
+        
+//         const data = await res.json();
+//         if (data.status === 'success') {
+//             alert('✅ Đã gửi test message đơn giản!');
+//         } else {
+//             alert('❌ Lỗi gửi test message đơn giản: ' + data.error);
+//         }
+//     } catch (error) {
+//         console.error('Lỗi:', error);
+//         alert('❌ Lỗi gửi test message đơn giản!');
+//     }
+// }
+
+// Load countdown
+async function loadNotifyCountdown() {
+    try {
+        const res = await fetch('/api/next-notify-countdown');
+        const data = await res.json();
+        
+        if (data.status === 'success') {
+            let seconds = data.next_notify_in_seconds;
+            
+            function updateCountdown() {
+                if (seconds < 0) {
+                    document.getElementById('notify-countdown').innerHTML = 
+                        '<div class="alert alert-info">🔄 Đang cập nhật...</div>';
+                    return;
+                }
+                
+                const days = Math.floor(seconds / 86400);
+                const hours = Math.floor((seconds % 86400) / 3600);
+                const minutes = Math.floor((seconds % 3600) / 60);
+                const secs = seconds % 60;
+                
+                document.getElementById('notify-countdown').innerHTML = `
+                    <div class="row text-center">
+                        <div class="col-md-3">
+                            <div class="border rounded p-3">
+                                <h3 class="text-primary">${days}</h3>
+                                <small>Ngày</small>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="border rounded p-3">
+                                <h3 class="text-success">${hours}</h3>
+                                <small>Giờ</small>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="border rounded p-3">
+                                <h3 class="text-warning">${minutes}</h3>
+                                <small>Phút</small>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="border rounded p-3">
+                                <h3 class="text-danger">${secs}</h3>
+                                <small>Giây</small>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="text-center mt-3">
+                        <small class="text-muted">Thông báo tiếp theo lúc ${data.notify_hour}:00</small>
+                    </div>
+                `;
+                
+                seconds--;
+                setTimeout(updateCountdown, 1000);
+            }
+            
+            updateCountdown();
+        }
+    } catch (error) {
+        console.error('Lỗi load countdown:', error);
+        document.getElementById('notify-countdown').innerHTML = 
+            '<div class="alert alert-danger">❌ Lỗi tải countdown</div>';
+    }
+}
+
+// Cập nhật thời gian hiện tại
+function updateCurrentTime() {
+    const now = new Date();
+    const timeString = now.toLocaleTimeString('vi-VN', {
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit'
+    });
+    const dateString = now.toLocaleDateString('vi-VN', {
+        weekday: 'long',
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric'
+    });
+    
+    document.getElementById('current-time-display').textContent = `${timeString} - ${dateString}`;
+}
+
+// Cập nhật thông tin thông báo
+function updateNotifyInfo() {
+    fetch('/api/next-notify-countdown').then(r=>r.json()).then(data=>{
+        if (data.status === 'success') {
+            document.getElementById('next-notify-display').textContent = data.message;
+        } else {
+            document.getElementById('next-notify-display').textContent = 'Không có thông báo nào';
+        }
+    }).catch(err => {
+        document.getElementById('next-notify-display').textContent = 'Không thể tải thông tin thông báo';
+    });
+}
+
+// Load cảnh báo hết hạn
+async function loadExpiryWarnings() {
+    try {
+        const res = await fetch('/api/expiry-warnings');
+        const data = await res.json();
+        
+        if (data.status === 'success') {
+            const warnings = data.warnings || [];
+            
+            if (warnings.length === 0) {
+                document.getElementById('expiry-warnings-list').innerHTML = 
+                    '<div class="alert alert-success">✅ Không có cảnh báo hết hạn nào!</div>';
+                return;
+            }
+            
+            let html = '<div class="row">';
+            warnings.forEach(warning => {
+                html += `
+                    <div class="col-md-6 mb-3">
+                        <div class="alert alert-warning">
+                            <h6 class="alert-heading">⚠️ ${warning}</h6>
+                        </div>
+                    </div>
+                `;
+            });
+            html += '</div>';
+            
+            document.getElementById('expiry-warnings-list').innerHTML = html;
+        } else {
+            document.getElementById('expiry-warnings-list').innerHTML = 
+                '<div class="alert alert-danger">❌ Lỗi: ' + (data.error || 'Không thể tải cảnh báo') + '</div>';
+        }
+    } catch (error) {
+        console.error('Lỗi load warnings:', error);
+        document.getElementById('expiry-warnings-list').innerHTML = 
+            '<div class="alert alert-danger">❌ Lỗi tải cảnh báo</div>';
+    }
+}
+
+// Gửi tất cả cảnh báo
+async function sendAllNotifications() {
+    if (!confirm('Bạn có chắc chắn muốn gửi tất cả cảnh báo hết hạn không?')) {
+        return;
+    }
+    try {
+        const res = await fetch('/api/send-all-notifications', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'}
+        });
+        const data = await res.json();
+        if (data.status === 'success') {
+            alert('✅ Đã gửi tất cả cảnh báo hết hạn!');
+            loadExpiryWarnings(); // Reload warnings to show updated status
+        } else {
+            alert('❌ Lỗi gửi tất cả cảnh báo: ' + data.error);
+        }
+    } catch (error) {
+        console.error('Lỗi gửi tất cả cảnh báo:', error);
+        alert('❌ Lỗi gửi tất cả cảnh báo!');
+    }
+}
+
+// Khởi tạo cập nhật thời gian
+updateCurrentTime();
+updateNotifyInfo();
+setInterval(updateCurrentTime, 1000);
+setInterval(updateNotifyInfo, 30000); // Cập nhật thông tin thông báo mỗi 30 giây
+</script>
+{% endblock %} 

@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Account Login</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">
+  <style>
+    body {
+      min-height: 100vh;
+      background: url('/static/img/bg-login.jpg') no-repeat center center fixed;
+      background-size: cover;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .login-card {
+      background: #fff;
+      border-radius: 16px;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.18);
+      padding: 2.5rem 2rem 2rem 2rem;
+      max-width: 350px;
+      width: 100%;
+      margin: auto;
+      position: relative;
+      z-index: 2;
+    }
+    .login-title {
+      text-align: center;
+      font-weight: bold;
+      font-size: 1.3rem;
+      letter-spacing: 2px;
+      margin-bottom: 2rem;
+      color: #201919;
+      text-shadow: 0 2px 8px rgba(0,0,0,0.4);
+      position: absolute;
+      top: -60px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 100%;
+      z-index: 3;
+    }
+    .form-control {
+      border-radius: 8px;
+      padding-left: 2.5rem;
+      background: #f7f7f7;
+      border: 1px solid #eee;
+      transition: all 0.3s ease;
+    }
+    .form-control:focus {
+      background: #fff;
+      border-color: #ff0080;
+      box-shadow: 0 0 0 0.2rem rgba(255,0,128,0.25);
+    }
+    .input-icon {
+      position: absolute;
+      left: 12px;
+      top: 50%;
+      transform: translateY(-50%);
+      color: #aaa;
+      font-size: 1.1rem;
+      transition: color 0.3s ease;
+    }
+    .form-control:focus + .input-icon {
+      color: #ff0080;
+    }
+    .btn-login {
+      background: linear-gradient(90deg,#ff0080,#ff8c00);
+      color: #fff;
+      font-weight: bold;
+      border-radius: 8px;
+      width: 100%;
+      margin-top: 1.5rem;
+      box-shadow: 0 2px 8px rgba(255,0,128,0.12);
+      transition: all 0.3s ease;
+      border: none;
+      padding: 12px;
+    }
+    .btn-login:hover {
+      background: linear-gradient(90deg,#ff8c00,#ff0080);
+      transform: translateY(-1px);
+      box-shadow: 0 4px 12px rgba(255,0,128,0.2);
+    }
+    .btn-login:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+      transform: none;
+    }
+    .position-relative {
+      position: relative;
+    }
+    .alert {
+      border-radius: 8px;
+      border: none;
+      font-size: 0.9rem;
+    }
+    .spinner-border-sm {
+      width: 1rem;
+      height: 1rem;
+    }
+  </style>
+</head>
+<body>
+  <div style="width:350px;position:relative;">
+    <div class="login-title">ACCOUNT LOGIN</div>
+    <div class="login-card">
+      <form id="login-form">
+        <div class="mb-3 position-relative">
+          <span class="input-icon"><i class="bi bi-person"></i></span>
+          <input type="text" class="form-control" id="login-username" required autocomplete="username" placeholder="User name">
+        </div>
+        <div class="mb-3 position-relative">
+          <span class="input-icon"><i class="bi bi-lock"></i></span>
+          <input type="password" class="form-control" id="login-password" required autocomplete="current-password" placeholder="Password">
+        </div>
+        <div id="login-error" class="alert alert-danger" style="display:none;"></div>
+        <div id="login-success" class="alert alert-success" style="display:none;"></div>
+        <button type="submit" class="btn btn-login" id="login-btn">
+          <span id="login-text">LOGIN</span>
+          <span id="login-spinner" class="spinner-border spinner-border-sm" style="display:none;"></span>
+        </button>
+      </form>
+      <div id="user-info" class="mt-3 text-center" style="display:none"></div>
+    </div>
+  </div>
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+  <script>
+  document.getElementById('login-form').onsubmit = function(e) {
+    e.preventDefault();
+    
+    const username = document.getElementById('login-username').value.trim();
+    const password = document.getElementById('login-password').value.trim();
+    const loginBtn = document.getElementById('login-btn');
+    const loginText = document.getElementById('login-text');
+    const loginSpinner = document.getElementById('login-spinner');
+    const errorDiv = document.getElementById('login-error');
+    const successDiv = document.getElementById('login-success');
+    const userInfo = document.getElementById('user-info');
+    
+    // Validation
+    if (!username || !password) {
+      showError('Vui lòng nhập đầy đủ username và password');
+      return;
+    }
+    
+    // Show loading state
+    setLoadingState(true);
+    hideMessages();
+    
+    console.log('Attempting login for username:', username);
+    
+    fetch('/login', {
+      method: 'POST',
+      headers: { 
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
+      },
+      body: JSON.stringify({ username, password }),
+      credentials: 'include'
+    })
+    .then(response => {
+      console.log('Response status:', response.status);
+      console.log('Response headers:', response.headers);
+      
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+      return response.json();
+    })
+    .then(data => {
+      console.log('Response data:', data);
+      
+      if (data.status === 'success') {
+        showSuccess('Đăng nhập thành công! Đang chuyển sang trang quản lý...');
+        userInfo.style.display = 'block';
+        userInfo.innerHTML = `<small class="text-muted"><b>User:</b> ${username}</small>`;
+        
+        // Redirect after 1 second
+        setTimeout(() => {
+          window.location.href = '/';
+        }, 1000);
+      } else {
+        showError(data.error || 'Đăng nhập thất bại');
+      }
+    })
+    .catch(error => {
+      console.error('Login error:', error);
+      showError('Lỗi kết nối. Vui lòng thử lại.');
+    })
+    .finally(() => {
+      setLoadingState(false);
+    });
+  };
+  
+  function setLoadingState(loading) {
+    const loginBtn = document.getElementById('login-btn');
+    const loginText = document.getElementById('login-text');
+    const loginSpinner = document.getElementById('login-spinner');
+    
+    if (loading) {
+      loginBtn.disabled = true;
+      loginText.style.display = 'none';
+      loginSpinner.style.display = 'inline-block';
+    } else {
+      loginBtn.disabled = false;
+      loginText.style.display = 'inline';
+      loginSpinner.style.display = 'none';
+    }
+  }
+  
+  function showError(message) {
+    const errorDiv = document.getElementById('login-error');
+    errorDiv.textContent = message;
+    errorDiv.style.display = 'block';
+  }
+  
+  function showSuccess(message) {
+    const successDiv = document.getElementById('login-success');
+    successDiv.textContent = message;
+    successDiv.style.display = 'block';
+  }
+  
+  function hideMessages() {
+    document.getElementById('login-error').style.display = 'none';
+    document.getElementById('login-success').style.display = 'none';
+    document.getElementById('user-info').style.display = 'none';
+  }
+  
+  // Auto-focus on username field
+  document.addEventListener('DOMContentLoaded', function() {
+    document.getElementById('login-username').focus();
+  });
+  </script>
+</body>
+</html>

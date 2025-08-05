@@ -1,0 +1,184 @@
+{% extends 'base.html' %}
+{% block content %}
+<h2 class="mb-4">Quản lý ZingProxy</h2>
+
+<!-- Form thêm tài khoản ZingProxy -->
+<div class="card mb-4">
+  <div class="card-body">
+    <h5 class="card-title">Thêm tài khoản ZingProxy</h5>
+    <form id="zingproxy-login-form" class="row g-3">
+      <div class="col-md-6">
+        <label class="form-label">Access Token</label>
+        <input type="password" class="form-control" id="zingproxy-access-token" placeholder="Nhập access token của bạn" required>
+      </div>
+      <div class="col-md-3">
+        <label class="form-label">Tần suất cập nhật</label>
+        <select class="form-select" id="zingproxy-update-frequency">
+          <option value="1">1 ngày</option>
+          <option value="3">3 ngày</option>
+          <option value="7">7 ngày</option>
+          <option value="30">30 ngày</option>
+        </select>
+      </div>
+      <div class="col-md-3 d-flex align-items-end">
+        <button type="submit" class="btn btn-primary">Lưu tài khoản</button>
+      </div>
+    </form>
+    <div id="zingproxy-login-result"></div>
+  </div>
+</div>
+
+<!-- Danh sách tài khoản ZingProxy -->
+<div class="card mb-4">
+  <div class="card-body">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+      <h5 class="card-title mb-0">Tài khoản ZingProxy</h5>
+    </div>
+    <div id="zingproxy-accounts-list"></div>
+  </div>
+</div>
+
+<!-- Danh sách proxy -->
+<div class="card mb-4">
+  <div class="card-body">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+      <h5 class="card-title mb-0">Danh sách Proxy</h5>
+      <button class="btn btn-success" id="update-all-proxies-btn">Cập nhật tất cả proxy</button>
+    </div>
+    <div id="zingproxy-proxies-list"></div>
+  </div>
+</div>
+
+<script>
+let currentAccountId = null;
+
+// Đăng nhập/lưu tài khoản
+
+document.getElementById('zingproxy-login-form').onsubmit = async function(e) {
+  e.preventDefault();
+  const accessToken = document.getElementById('zingproxy-access-token').value;
+  const updateFrequency = document.getElementById('zingproxy-update-frequency').value;
+  const resultDiv = document.getElementById('zingproxy-login-result');
+  resultDiv.innerHTML = '';
+  const res = await fetch('/api/zingproxy-login', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({access_token: accessToken, update_frequency: updateFrequency})
+  });
+  const json = await res.json();
+  if(json.status === 'success') {
+    resultDiv.innerHTML = '<div class="alert alert-success">Đã lưu tài khoản!</div>';
+    this.reset();
+    loadAccounts();
+  } else {
+    resultDiv.innerHTML = `<div class='alert alert-danger'>${json.error}</div>`;
+  }
+};
+
+// Load danh sách tài khoản
+async function loadAccounts() {
+  const res = await fetch('/api/zingproxy-accounts');
+  const json = await res.json();
+  const listDiv = document.getElementById('zingproxy-accounts-list');
+  if(json.status === 'success') {
+    if(json.accounts.length === 0) {
+      listDiv.innerHTML = '<div class="alert alert-info">Chưa có tài khoản nào.</div>';
+      return;
+    }
+    let html = '<table class="table table-bordered"><thead><tr><th>Email</th><th>Balance</th><th>Ngày tạo</th><th>Cập nhật cuối</th><th>Hành động</th></tr></thead><tbody>';
+    json.accounts.forEach(acc => {
+      html += `<tr>
+        <td>${acc.email}</td>
+        <td><span class="badge bg-success">$${acc.balance || 0}</span></td>
+        <td>${acc.created_at ? new Date(acc.created_at).toLocaleString('vi-VN') : ''}</td>
+        <td>${acc.last_updated ? new Date(acc.last_updated).toLocaleString('vi-VN') : ''}</td>
+        <td>
+          <button class='btn btn-sm btn-info me-1' onclick='updateProxies(${acc.id})'>Cập nhật proxy</button>
+          <button class='btn btn-sm btn-primary me-1' onclick='showProxies(${acc.id})'>Xem proxy</button>
+          <button class='btn btn-sm btn-danger' onclick='deleteAccount(${acc.id})'>Xóa</button>
+        </td>
+      </tr>`;
+    });
+    html += '</tbody></table>';
+    listDiv.innerHTML = html;
+  } else {
+    listDiv.innerHTML = `<div class='alert alert-danger'>${json.error}</div>`;
+  }
+}
+
+// Cập nhật proxy cho tài khoản
+async function updateProxies(accId) {
+  const res = await fetch(`/api/zingproxy-update-proxies/${accId}`, {method: 'POST'});
+  const json = await res.json();
+  if(json.status === 'success') {
+    alert('Đã cập nhật proxy!');
+    showProxies(accId);
+  } else {
+    alert(json.error);
+  }
+}
+
+// Xem proxy của tài khoản
+async function showProxies(accId) {
+  currentAccountId = accId;
+  const res = await fetch(`/api/zingproxy-proxies/${accId}`);
+  const json = await res.json();
+  const listDiv = document.getElementById('zingproxy-proxies-list');
+  if(json.status === 'success') {
+    if(json.proxies.length === 0) {
+      listDiv.innerHTML = '<div class="alert alert-info">Chưa có proxy nào.</div>';
+      return;
+    }
+    let html = '<table class="table table-bordered"><thead><tr><th>ID</th><th>IP</th><th>Port HTTP</th><th>Port SOCKS5</th><th>Username</th><th>Password</th><th>Trạng thái</th><th>Hết hạn</th><th>Type</th><th>Note</th></tr></thead><tbody>';
+    json.proxies.forEach(proxy => {
+      html += `<tr>
+        <td>${proxy.proxy_id}</td>
+        <td>${proxy.ip || ''}</td>
+        <td>${proxy.port || ''}</td>
+        <td>${proxy.port_socks5 || ''}</td>
+        <td>${proxy.username || ''}</td>
+        <td>${proxy.password || ''}</td>
+        <td><span class="badge bg-${proxy.status === 'running' ? 'success' : 'warning'}">${proxy.status || ''}</span></td>
+        <td>${proxy.expire_at || ''}</td>
+        <td><span class="badge bg-info">${proxy.type || ''}</span></td>
+        <td>${proxy.note || ''}</td>
+      </tr>`;
+    });
+    html += '</tbody></table>';
+    listDiv.innerHTML = html;
+  } else {
+    listDiv.innerHTML = `<div class='alert alert-danger'>${json.error}</div>`;
+  }
+}
+
+// Xóa tài khoản
+async function deleteAccount(accId) {
+  if(!confirm('Bạn có chắc muốn xóa tài khoản này?')) return;
+  const res = await fetch(`/api/zingproxy-delete-account/${accId}`, {method: 'DELETE'});
+  const json = await res.json();
+  if(json.status === 'success') {
+    alert('Đã xóa tài khoản!');
+    loadAccounts();
+    document.getElementById('zingproxy-proxies-list').innerHTML = '';
+  } else {
+    alert(json.error);
+  }
+}
+
+// Cập nhật tất cả proxy cho tất cả tài khoản
+
+document.getElementById('update-all-proxies-btn').onclick = async function() {
+  const res = await fetch('/api/zingproxy-accounts');
+  const json = await res.json();
+  if(json.status === 'success') {
+    for(const acc of json.accounts) {
+      await updateProxies(acc.id);
+    }
+    if(currentAccountId) showProxies(currentAccountId);
+  }
+};
+
+// Load danh sách khi trang load
+loadAccounts();
+</script>
+{% endblock %} 
