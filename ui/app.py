@@ -8,6 +8,7 @@ from core.models import db, User, VPS, Account
 from werkzeug.security import check_password_hash
 from core.api_clients.bitlaunch import BitLaunchClient, BitLaunchAPIError
 from core.api_clients.zingproxy import ZingProxyClient, ZingProxyAPIError
+from core.api_clients.cloudfly import CloudFlyClient, CloudFlyAPIError
 from core.models import ZingProxyAccount
 from dotenv import load_dotenv
 from flask_cors import CORS
@@ -1451,6 +1452,12 @@ def create_app():
         if auth_check: return auth_check
         return render_template('notifications.html')
 
+    @app.route('/cloudfly')
+    def cloudfly_page():
+        auth_check = require_auth()
+        if auth_check: return auth_check
+        return render_template('cloudfly.html')
+
     @app.route('/api/notify-hour', methods=['GET', 'POST'])
     def notify_hour_setting():
         if 'user_id' not in session:
@@ -1609,6 +1616,192 @@ def create_app():
                 
         except Exception as e:
             logger.error(f"Error in test telegram simple: {e}")
+            return {'status': 'error', 'error': str(e)}, 500
+
+    # CloudFly API Routes
+    @app.route('/api/cloudfly/apis', methods=['GET'])
+    def api_cloudfly_list_apis():
+        """Lấy danh sách CloudFly APIs của user hiện tại"""
+        if 'user_id' not in session:
+            return {'status': 'error', 'error': 'Chưa đăng nhập'}, 401
+        
+        try:
+            apis = manager.list_cloudfly_apis(session['user_id'])
+            return {'status': 'success', 'apis': apis}
+        except Exception as e:
+            logger.error(f"Error listing CloudFly APIs: {e}")
+            return {'status': 'error', 'error': str(e)}, 500
+
+    @app.route('/api/cloudfly/apis', methods=['POST'])
+    def api_cloudfly_add_api():
+        """Thêm CloudFly API mới"""
+        if 'user_id' not in session:
+            return {'status': 'error', 'error': 'Chưa đăng nhập'}, 401
+        
+        try:
+            data = request.json
+            email = data.get('email')
+            api_token = data.get('api_token')
+            update_frequency = data.get('update_frequency', 1)
+            
+            if not email or not api_token:
+                return {'status': 'error', 'error': 'Thiếu thông tin bắt buộc'}, 400
+            
+            # Validate email
+            if not CloudFlyAPI.validate_email(email):
+                return {'status': 'error', 'error': 'Email không hợp lệ'}, 400
+            
+            # Test API token
+            try:
+                client = CloudFlyClient(api_token)
+                user_info = client.get_user_info()
+            except CloudFlyAPIError as e:
+                return {'status': 'error', 'error': f'API Token không hợp lệ: {str(e)}'}, 400
+            
+            # Lưu API
+            api = manager.add_cloudfly_api(session['user_id'], email, api_token, update_frequency)
+            
+            # Cập nhật thông tin tài khoản
+            balance = user_info.get('balance', 0)
+            account_limit = user_info.get('account_limit', 0)
+            manager.update_cloudfly_info(api.id, balance, account_limit)
+            
+            return {'status': 'success', 'message': 'Thêm API Token thành công'}
+        except ValueError as e:
+            return {'status': 'error', 'error': str(e)}, 400
+        except Exception as e:
+            logger.error(f"Error adding CloudFly API: {e}")
+            return {'status': 'error', 'error': str(e)}, 500
+
+    @app.route('/api/cloudfly/apis/<int:api_id>', methods=['DELETE'])
+    def api_cloudfly_delete_api(api_id):
+        """Xóa CloudFly API"""
+        if 'user_id' not in session:
+            return {'status': 'error', 'error': 'Chưa đăng nhập'}, 401
+        
+        try:
+            api = manager.get_cloudfly_api_by_id(api_id)
+            if not api:
+                return {'status': 'error', 'error': 'API không tồn tại'}, 404
+            
+            if api.user_id != session['user_id']:
+                return {'status': 'error', 'error': 'Không có quyền xóa API này'}, 403
+            
+            manager.delete_cloudfly_api(api_id)
+            return {'status': 'success', 'message': 'Xóa API Token thành công'}
+        except Exception as e:
+            logger.error(f"Error deleting CloudFly API: {e}")
+            return {'status': 'error', 'error': str(e)}, 500
+
+    @app.route('/api/cloudfly/apis/update-all', methods=['POST'])
+    def api_cloudfly_update_all_apis():
+        """Cập nhật tất cả CloudFly APIs"""
+        if 'user_id' not in session:
+            return {'status': 'error', 'error': 'Chưa đăng nhập'}, 401
+        
+        try:
+            apis = manager.get_cloudfly_apis_needing_update()
+            updated_count = 0
+            
+            for api in apis:
+                if api.user_id == session['user_id']:
+                    try:
+                        client = CloudFlyClient(api.api_token)
+                        user_info = client.get_user_info()
+                        balance = user_info.get('balance', 0)
+                        account_limit = user_info.get('account_limit', 0)
+                        manager.update_cloudfly_info(api.id, balance, account_limit)
+                        updated_count += 1
+                    except Exception as e:
+                        logger.error(f"Error updating CloudFly API {api.id}: {e}")
+                        continue
+            
+            return {'status': 'success', 'message': f'Đã cập nhật {updated_count} API Tokens'}
+        except Exception as e:
+            logger.error(f"Error updating CloudFly APIs: {e}")
+            return {'status': 'error', 'error': str(e)}, 500
+
+    @app.route('/api/cloudfly/vps', methods=['GET'])
+    def api_cloudfly_list_vps():
+        """Lấy danh sách VPS CloudFly của user hiện tại"""
+        if 'user_id' not in session:
+            return {'status': 'error', 'error': 'Chưa đăng nhập'}, 401
+        
+        try:
+            vps_list = manager.list_cloudfly_vps(session['user_id'])
+            return {'status': 'success', 'vps': vps_list}
+        except Exception as e:
+            logger.error(f"Error listing CloudFly VPS: {e}")
+            return {'status': 'error', 'error': str(e)}, 500
+
+    @app.route('/api/cloudfly/vps/<int:vps_id>', methods=['GET'])
+    def api_cloudfly_vps_detail(vps_id):
+        """Lấy chi tiết VPS CloudFly"""
+        if 'user_id' not in session:
+            return {'status': 'error', 'error': 'Chưa đăng nhập'}, 401
+        
+        try:
+            vps = manager.get_cloudfly_vps_by_id(vps_id)
+            if not vps:
+                return {'status': 'error', 'error': 'VPS không tồn tại'}, 404
+            
+            # Kiểm tra quyền truy cập
+            api = manager.get_cloudfly_api_by_id(vps.api_id)
+            if api.user_id != session['user_id']:
+                return {'status': 'error', 'error': 'Không có quyền truy cập VPS này'}, 403
+            
+            vps_dict = manager.cloudfly_vps_to_dict(vps)
+            return {'status': 'success', 'vps': vps_dict}
+        except Exception as e:
+            logger.error(f"Error getting CloudFly VPS detail: {e}")
+            return {'status': 'error', 'error': str(e)}, 500
+
+    @app.route('/api/cloudfly/vps/<int:vps_id>', methods=['DELETE'])
+    def api_cloudfly_delete_vps(vps_id):
+        """Xóa VPS CloudFly khỏi hệ thống quản lý"""
+        if 'user_id' not in session:
+            return {'status': 'error', 'error': 'Chưa đăng nhập'}, 401
+        
+        try:
+            vps = manager.get_cloudfly_vps_by_id(vps_id)
+            if not vps:
+                return {'status': 'error', 'error': 'VPS không tồn tại'}, 404
+            
+            # Kiểm tra quyền truy cập
+            api = manager.get_cloudfly_api_by_id(vps.api_id)
+            if api.user_id != session['user_id']:
+                return {'status': 'error', 'error': 'Không có quyền xóa VPS này'}, 403
+            
+            manager.delete_cloudfly_vps(vps_id)
+            return {'status': 'success', 'message': 'Xóa VPS thành công'}
+        except Exception as e:
+            logger.error(f"Error deleting CloudFly VPS: {e}")
+            return {'status': 'error', 'error': str(e)}, 500
+
+    @app.route('/api/cloudfly/vps/update-all', methods=['POST'])
+    def api_cloudfly_update_all_vps():
+        """Cập nhật tất cả VPS CloudFly"""
+        if 'user_id' not in session:
+            return {'status': 'error', 'error': 'Chưa đăng nhập'}, 401
+        
+        try:
+            apis = manager.list_cloudfly_apis(session['user_id'])
+            updated_count = 0
+            
+            for api_dict in apis:
+                api = manager.get_cloudfly_api_by_id(api_dict['id'])
+                try:
+                    client = CloudFlyClient(api.api_token)
+                    instances = client.list_instances()
+                    manager.update_cloudfly_vps_list(api.id, instances)
+                    updated_count += len(instances)
+                except Exception as e:
+                    logger.error(f"Error updating CloudFly VPS for API {api.id}: {e}")
+                    continue
+            
+            return {'status': 'success', 'message': f'Đã cập nhật {updated_count} VPS instances'}
+        except Exception as e:
+            logger.error(f"Error updating CloudFly VPS: {e}")
             return {'status': 'error', 'error': str(e)}, 500
 
     return app

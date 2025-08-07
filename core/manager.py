@@ -1,8 +1,9 @@
 from typing import Dict, List, Optional, Any
-from core.models import db, VPS, Account, BitLaunchAPI, BitLaunchVPS, ZingProxyAccount, ZingProxy, User, Proxy
+from core.models import db, VPS, Account, BitLaunchAPI, BitLaunchVPS, ZingProxyAccount, ZingProxy, User, Proxy, CloudFlyAPI, CloudFlyVPS
 from core.encryption import encrypt_sensitive_data, decrypt_sensitive_data
 from core.api_clients.bitlaunch import BitLaunchClient, BitLaunchAPIError
 from core.api_clients.zingproxy import ZingProxyClient, ZingProxyAPIError
+from core.api_clients.cloudfly import CloudFlyClient, CloudFlyAPIError
 from core.notifier import notify_expiry_telegram_per_user
 import logging
 from datetime import datetime, timedelta
@@ -385,6 +386,171 @@ def get_zingproxy_accounts_needing_update() -> list:
             need_update.append(acc)
     
     return need_update 
+
+def cloudfly_api_to_dict(api: CloudFlyAPI) -> dict:
+    return {
+        'id': api.id,
+        'email': api.email,
+        'balance': api.balance,
+        'limit': api.account_limit,
+        'last_updated': api.last_updated.isoformat() if api.last_updated else None,
+        'update_frequency': api.update_frequency,
+        'is_active': api.is_active
+    }
+
+def cloudfly_vps_to_dict(vps: CloudFlyVPS) -> dict:
+    return {
+        'id': vps.id,
+        'instance_id': vps.instance_id,
+        'name': vps.name,
+        'status': vps.status,
+        'ip_address': vps.ip_address,
+        'ipv6_address': vps.ipv6_address,
+        'region': vps.region,
+        'image_name': vps.image_name,
+        'flavor_type': vps.flavor_type,
+        'ram': vps.ram,
+        'vcpus': vps.vcpus,
+        'disk': vps.disk,
+        'enable_ipv6': vps.enable_ipv6,
+        'enable_private_network': vps.enable_private_network,
+        'auto_backup': vps.auto_backup,
+        'created_at': vps.created_at.isoformat() if vps.created_at else None,
+        'last_updated': vps.last_updated.isoformat() if vps.last_updated else None
+    }
+
+def add_cloudfly_api(user_id: int, email: str, api_token: str, update_frequency: int = 1) -> CloudFlyAPI:
+    # Kiểm tra xem email đã tồn tại cho user này chưa
+    existing_api = CloudFlyAPI.query.filter_by(user_id=user_id, email=email).first()
+    if existing_api:
+        raise ValueError(f"CloudFly API với email {email} đã tồn tại cho user này")
+    
+    # Tạo API mới
+    api = CloudFlyAPI(
+        user_id=user_id,
+        email=email,
+        api_token=api_token,
+        update_frequency=update_frequency
+    )
+    
+    db.session.add(api)
+    db.session.commit()
+    return api
+
+def update_cloudfly_info(api_id: int, balance: float, limit: float) -> None:
+    api = CloudFlyAPI.query.get(api_id)
+    if api:
+        api.balance = balance
+        api.account_limit = limit
+        api.last_updated = datetime.utcnow()
+        db.session.commit()
+
+def list_cloudfly_apis(user_id: int) -> List[dict]:
+    apis = CloudFlyAPI.query.filter_by(user_id=user_id).all()
+    return [cloudfly_api_to_dict(api) for api in apis]
+
+def delete_cloudfly_api(api_id: int) -> None:
+    api = CloudFlyAPI.query.get(api_id)
+    if api:
+        # Xóa tất cả VPS liên quan
+        CloudFlyVPS.query.filter_by(api_id=api_id).delete()
+        db.session.delete(api)
+        db.session.commit()
+
+def get_cloudfly_api_by_id(api_id: int) -> Optional[CloudFlyAPI]:
+    return CloudFlyAPI.query.get(api_id)
+
+def get_cloudfly_apis_needing_update() -> List[CloudFlyAPI]:
+    """Lấy danh sách CloudFly APIs cần cập nhật"""
+    today = datetime.utcnow().date()
+    apis = CloudFlyAPI.query.filter_by(is_active=True).all()
+    
+    apis_needing_update = []
+    for api in apis:
+        if api.last_updated is None:
+            apis_needing_update.append(api)
+        else:
+            days_since_update = (today - api.last_updated.date()).days
+            if days_since_update >= api.update_frequency:
+                apis_needing_update.append(api)
+    
+    return apis_needing_update
+
+def add_cloudfly_vps(api_id: int, instance_data: dict) -> CloudFlyVPS:
+    """Thêm VPS mới từ CloudFly"""
+    # Kiểm tra xem instance đã tồn tại chưa
+    existing_vps = CloudFlyVPS.query.filter_by(
+        api_id=api_id, 
+        instance_id=instance_data.get('id')
+    ).first()
+    
+    if existing_vps:
+        # Cập nhật thông tin nếu đã tồn tại
+        for key, value in instance_data.items():
+            if hasattr(existing_vps, key):
+                setattr(existing_vps, key, value)
+        existing_vps.last_updated = datetime.utcnow()
+        db.session.commit()
+        return existing_vps
+    
+    # Tạo VPS mới
+    vps = CloudFlyVPS(
+        api_id=api_id,
+        instance_id=instance_data.get('id'),
+        name=instance_data.get('name'),
+        status=instance_data.get('status'),
+        ip_address=instance_data.get('ip_address'),
+        ipv6_address=instance_data.get('ipv6_address'),
+        region=instance_data.get('region'),
+        image_name=instance_data.get('image_name'),
+        flavor_type=instance_data.get('flavor_type'),
+        ram=instance_data.get('ram'),
+        vcpus=instance_data.get('vcpus'),
+        disk=instance_data.get('disk'),
+        enable_ipv6=instance_data.get('enable_ipv6'),
+        enable_private_network=instance_data.get('enable_private_network'),
+        auto_backup=instance_data.get('auto_backup'),
+        created_at=instance_data.get('created_at'),
+        last_updated=datetime.utcnow()
+    )
+    
+    db.session.add(vps)
+    db.session.commit()
+    return vps
+
+def update_cloudfly_vps_list(api_id: int, instances_list: List[dict]) -> None:
+    """Cập nhật danh sách VPS từ CloudFly"""
+    # Xóa tất cả VPS cũ
+    CloudFlyVPS.query.filter_by(api_id=api_id).delete()
+    
+    # Thêm VPS mới
+    for instance_data in instances_list:
+        add_cloudfly_vps(api_id, instance_data)
+
+def list_cloudfly_vps(user_id: int) -> List[dict]:
+    """Lấy danh sách VPS CloudFly của user"""
+    vps_list = []
+    apis = CloudFlyAPI.query.filter_by(user_id=user_id).all()
+    
+    for api in apis:
+        vps_instances = CloudFlyVPS.query.filter_by(api_id=api.id).all()
+        for vps in vps_instances:
+            vps_dict = cloudfly_vps_to_dict(vps)
+            vps_dict['api_email'] = api.email
+            vps_list.append(vps_dict)
+    
+    return vps_list
+
+def delete_cloudfly_vps(vps_id: int) -> None:
+    """Xóa VPS CloudFly"""
+    vps = CloudFlyVPS.query.get(vps_id)
+    if vps:
+        db.session.delete(vps)
+        db.session.commit()
+
+def get_cloudfly_vps_by_id(vps_id: int) -> Optional[CloudFlyVPS]:
+    """Lấy VPS CloudFly theo ID"""
+    return CloudFlyVPS.query.get(vps_id)
 
 def update_user_notify_hour(user_id: int, notify_hour: int) -> bool:
     """Cập nhật giờ gửi thông báo cho user"""

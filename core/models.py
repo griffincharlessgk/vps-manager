@@ -205,3 +205,54 @@ class Proxy(db.Model):
             return 1 <= port_num <= 65535
         except ValueError:
             return False 
+
+class CloudFlyAPI(db.Model):
+    __tablename__ = 'cloudfly_apis'
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+    email = db.Column(db.String(128), nullable=False)  # Email từ CloudFly account
+    api_token_encrypted = db.Column(db.String(512), nullable=False)  # API token đã mã hóa
+    balance = db.Column(db.Float, nullable=True)  # Số dư hiện tại
+    account_limit = db.Column(db.Float, nullable=True)  # Giới hạn
+    last_updated = db.Column(db.DateTime, nullable=True)  # Lần cập nhật cuối
+    update_frequency = db.Column(db.Integer, nullable=False, default=1)  # Số ngày cập nhật (1, 3, 7, 30)
+    is_active = db.Column(db.Boolean, nullable=False, default=True)  # Trạng thái hoạt động
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    @property
+    def api_token(self):
+        """Get decrypted API token"""
+        return decrypt_sensitive_data(self.api_token_encrypted)
+
+    @api_token.setter
+    def api_token(self, value):
+        """Set encrypted API token"""
+        self.api_token_encrypted = encrypt_sensitive_data(value)
+
+    @staticmethod
+    def validate_email(email):
+        """Validate email format"""
+        pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
+        return bool(re.match(pattern, email))
+
+class CloudFlyVPS(db.Model):
+    __tablename__ = 'cloudfly_vps'
+    id = db.Column(db.Integer, primary_key=True)
+    api_id = db.Column(db.Integer, db.ForeignKey('cloudfly_apis.id'), nullable=False)
+    instance_id = db.Column(db.String(64), nullable=False)  # ID instance từ CloudFly
+    name = db.Column(db.String(128), nullable=True)
+    status = db.Column(db.String(32), nullable=True)  # running, stopped, etc.
+    ip_address = db.Column(db.String(45), nullable=True)  # IP address
+    ipv6_address = db.Column(db.String(45), nullable=True)  # IPv6 address
+    region = db.Column(db.String(64), nullable=True)  # Server region
+    image_name = db.Column(db.String(64), nullable=True)  # OS image
+    flavor_type = db.Column(db.String(64), nullable=True)  # Plan type
+    ram = db.Column(db.Integer, nullable=True)  # RAM in GB
+    vcpus = db.Column(db.Integer, nullable=True)  # Number of CPUs
+    disk = db.Column(db.Integer, nullable=True)  # Disk size in GB
+    enable_ipv6 = db.Column(db.Boolean, nullable=True)  # IPv6 enabled
+    enable_private_network = db.Column(db.Boolean, nullable=True)  # Private network enabled
+    auto_backup = db.Column(db.Boolean, nullable=True)  # Auto backup enabled
+    created_at = db.Column(db.DateTime, nullable=True)
+    last_updated = db.Column(db.DateTime, nullable=True) 

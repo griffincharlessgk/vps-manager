@@ -207,6 +207,75 @@ def start_scheduler():
             
             logger.info(f"[Scheduler] Auto sync completed: {total_synced} proxies synced, {failed_accounts} accounts failed")
 
+    def update_cloudfly_apis():
+        """Tự động cập nhật thông tin tài khoản CloudFly theo tần suất"""
+        logger.info("[Scheduler] Running update_cloudfly_apis job")
+        with app.app_context():
+            from core.api_clients.cloudfly import CloudFlyClient, CloudFlyAPIError
+            apis = manager.get_cloudfly_apis_needing_update()
+            logger.info(f"[Scheduler] Found {len(apis)} CloudFly APIs needing update")
+            
+            updated_count = 0
+            for api in apis:
+                try:
+                    logger.info(f"[Scheduler] Updating CloudFly API {api.id} ({api.email})")
+                    client = CloudFlyClient(api.api_token)
+                    
+                    # Cập nhật thông tin tài khoản
+                    user_info = client.get_user_info()
+                    balance = user_info.get('balance', 0)
+                    account_limit = user_info.get('account_limit', 0)
+                    manager.update_cloudfly_info(api.id, balance, account_limit)
+                    logger.info(f"[Scheduler] Updated balance for API {api.id}: ${balance}")
+                    
+                    updated_count += 1
+                except CloudFlyAPIError as e:
+                    logger.error(f"[Scheduler] CloudFly API error for API {api.id}: {e}")
+                    continue
+                except Exception as e:
+                    logger.error(f"[Scheduler] Error updating CloudFly API {api.id}: {e}")
+                    continue
+            
+            logger.info(f"[Scheduler] Successfully updated {updated_count}/{len(apis)} CloudFly APIs")
+
+    def update_cloudfly_vps():
+        """Tự động cập nhật danh sách VPS CloudFly"""
+        logger.info("[Scheduler] Running update_cloudfly_vps job")
+        with app.app_context():
+            from core.api_clients.cloudfly import CloudFlyClient, CloudFlyAPIError
+            from core.models import CloudFlyAPI
+            
+            # Lấy tất cả tài khoản CloudFly
+            apis = CloudFlyAPI.query.filter_by(is_active=True).all()
+            logger.info(f"[Scheduler] Found {len(apis)} CloudFly APIs for VPS update")
+            
+            total_updated = 0
+            failed_apis = 0
+            
+            for api in apis:
+                try:
+                    logger.info(f"[Scheduler] Updating VPS for CloudFly API {api.id} ({api.email})")
+                    client = CloudFlyClient(api.api_token)
+                    instances = client.list_instances()
+                    
+                    if instances:
+                        manager.update_cloudfly_vps_list(api.id, instances)
+                        total_updated += len(instances)
+                        logger.info(f"[Scheduler] Updated {len(instances)} VPS instances for API {api.id}")
+                    else:
+                        logger.info(f"[Scheduler] No VPS instances found for API {api.id}")
+                        
+                except CloudFlyAPIError as e:
+                    logger.error(f"[Scheduler] CloudFly API error for API {api.id}: {e}")
+                    failed_apis += 1
+                    continue
+                except Exception as e:
+                    logger.error(f"[Scheduler] Error updating CloudFly VPS for API {api.id}: {e}")
+                    failed_apis += 1
+                    continue
+            
+            logger.info(f"[Scheduler] CloudFly VPS update completed: {total_updated} instances updated, {failed_apis} APIs failed")
+
     # Lên lịch đồng bộ proxy từ ZingProxy hàng ngày lúc 2:00 sáng
     scheduler.add_job(
         auto_sync_zingproxy_proxies,
@@ -241,6 +310,14 @@ def start_scheduler():
     
     # Lên lịch đồng bộ proxy từ ZingProxy mỗi ngày lúc 8h sáng
     scheduler.add_job(auto_sync_zingproxy_proxies, 'cron', hour=8, minute=0, id='zingproxy_proxy_sync_daily')
+    
+    # Lên lịch cập nhật CloudFly mỗi ngày lúc 8h sáng
+    scheduler.add_job(update_cloudfly_apis, 'cron', hour=8, minute=0, id='cloudfly_update')
+    scheduler.add_job(update_cloudfly_vps, 'cron', hour=8, minute=30, id='cloudfly_vps_update')
+    
+    # Lên lịch cập nhật CloudFly mỗi 6 giờ để đảm bảo dữ liệu luôn mới
+    scheduler.add_job(update_cloudfly_apis, 'interval', hours=6, id='cloudfly_update_interval')
+    scheduler.add_job(update_cloudfly_vps, 'interval', hours=6, id='cloudfly_vps_update_interval')
     
     logger.info(f"[Scheduler] Starting scheduler with {len(scheduler.get_jobs())} jobs")
     scheduler.start()
