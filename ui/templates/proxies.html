@@ -1,0 +1,614 @@
+{% extends 'base.html' %}
+{% block content %}
+<h2 class="mb-4">Quản lý Proxy</h2>
+
+<!-- Thông tin đồng bộ ZingProxy -->
+<div class="card mb-4">
+  <div class="card-header">
+    <h5 class="card-title mb-0">
+      <i class="fas fa-sync"></i> Trạng thái đồng bộ ZingProxy
+    </h5>
+  </div>
+  <div class="card-body">
+    <div class="row">
+      <div class="col-md-3">
+        <div class="text-center">
+          <h4 id="zingproxy-accounts">-</h4>
+          <small class="text-muted">Tài khoản ZingProxy</small>
+        </div>
+      </div>
+      <div class="col-md-3">
+        <div class="text-center">
+          <h4 id="zingproxy-proxies">-</h4>
+          <small class="text-muted">Proxy từ ZingProxy</small>
+        </div>
+      </div>
+      <div class="col-md-3">
+        <div class="text-center">
+          <h4 id="total-proxies">-</h4>
+          <small class="text-muted">Tổng số Proxy</small>
+        </div>
+      </div>
+      <div class="col-md-3">
+        <div class="text-center">
+          <button class="btn btn-outline-info btn-sm" id="refresh-sync-status-btn">
+            <i class="fas fa-refresh"></i> Cập nhật
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Form thêm proxy thủ công -->
+<div class="card mb-4">
+  <div class="card-header">
+    <h5 class="card-title mb-0">Thêm Proxy thủ công</h5>
+  </div>
+  <div class="card-body">
+    <form id="add-proxy-form" class="row g-3">
+      <div class="col-md-3">
+        <label class="form-label">Tên dịch vụ *</label>
+        <input type="text" class="form-control" id="proxy-name" placeholder="Nhập tên proxy" required>
+      </div>
+      <div class="col-md-2">
+        <label class="form-label">IP *</label>
+        <input type="text" class="form-control" id="proxy-ip" placeholder="192.168.1.1" required>
+      </div>
+      <div class="col-md-2">
+        <label class="form-label">Port *</label>
+        <input type="text" class="form-control" id="proxy-port" placeholder="8080" required>
+      </div>
+      <div class="col-md-2">
+        <label class="form-label">Port SOCKS5</label>
+        <input type="text" class="form-control" id="proxy-port-socks5" placeholder="1080">
+      </div>
+      <div class="col-md-3">
+        <label class="form-label">Loại</label>
+        <select class="form-select" id="proxy-type">
+          <option value="HTTP">HTTP</option>
+          <option value="HTTPS">HTTPS</option>
+          <option value="SOCKS4">SOCKS4</option>
+          <option value="SOCKS5">SOCKS5</option>
+        </select>
+      </div>
+      <div class="col-md-3">
+        <label class="form-label">Username</label>
+        <input type="text" class="form-control" id="proxy-username" placeholder="Username">
+      </div>
+      <div class="col-md-3">
+        <label class="form-label">Password</label>
+        <input type="password" class="form-control" id="proxy-password" placeholder="Password">
+      </div>
+      <div class="col-md-2">
+        <label class="form-label">Quốc gia</label>
+        <input type="text" class="form-control" id="proxy-location" placeholder="VN">
+      </div>
+      <div class="col-md-2">
+        <label class="form-label">Trạng thái</label>
+        <select class="form-select" id="proxy-status">
+          <option value="active">Hoạt động</option>
+          <option value="inactive">Không hoạt động</option>
+          <option value="expired">Hết hạn</option>
+        </select>
+      </div>
+      <div class="col-md-2">
+        <label class="form-label">Ngày hết hạn</label>
+        <input type="date" class="form-control" id="proxy-expire-at">
+      </div>
+      <div class="col-md-3">
+        <label class="form-label">Ghi chú</label>
+        <input type="text" class="form-control" id="proxy-note" placeholder="Ghi chú">
+      </div>
+      <div class="col-md-2 d-flex align-items-end">
+        <button type="submit" class="btn btn-primary w-100">
+          <i class="fas fa-plus"></i> Thêm Proxy
+        </button>
+      </div>
+    </form>
+    <div id="add-proxy-result"></div>
+  </div>
+</div>
+
+
+
+
+<!-- Danh sách proxy -->
+<div class="card mb-4">
+  <div class="card-header">
+    <div class="d-flex justify-content-between align-items-center">
+      <h5 class="card-title mb-0">Danh sách Proxy</h5>
+      <div>
+        <button class="btn btn-success me-2" id="sync-zingproxy-btn">
+          <i class="fas fa-sync"></i> Đồng bộ từ ZingProxy
+        </button>
+        <button class="btn btn-info me-2" id="refresh-proxies-btn">
+          <i class="fas fa-refresh"></i> Làm mới
+        </button>
+        <button class="btn btn-warning" id="export-proxies-btn">
+          <i class="fas fa-download"></i> Export
+        </button>
+      </div>
+    </div>
+  </div>
+  <div class="card-body">
+    <div id="proxies-list"></div>
+  </div>
+</div>
+
+<!-- Modal xác nhận đồng bộ ZingProxy -->
+<div class="modal fade" id="syncZingProxyModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Đồng bộ từ ZingProxy</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <p>Bạn có muốn đồng bộ tất cả proxy từ các tài khoản ZingProxy đã kết nối?</p>
+        <div class="alert alert-info">
+          <i class="fas fa-info-circle"></i>
+          <strong>Lưu ý:</strong>
+          <ul class="mb-0 mt-2">
+            <li>Proxy mới sẽ được thêm vào danh sách</li>
+            <li>Proxy đã tồn tại sẽ được cập nhật thông tin mới nhất</li>
+            <li>Quá trình này có thể mất vài phút tùy thuộc vào số lượng proxy</li>
+          </ul>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Hủy</button>
+        <button type="button" class="btn btn-success" id="confirm-sync-btn">
+          <i class="fas fa-sync"></i> Đồng bộ ngay
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal chỉnh sửa proxy -->
+<div class="modal fade" id="editProxyModal" tabindex="-1">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Chỉnh sửa Proxy</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <form id="edit-proxy-form">
+          <input type="hidden" id="edit-proxy-id">
+          <div class="row g-3">
+            <div class="col-md-6">
+              <label class="form-label">Tên dịch vụ*</label>
+              <input type="text" class="form-control" id="edit-proxy-name" required>
+            </div>
+            <div class="col-md-3">
+              <label class="form-label">IP *</label>
+              <input type="text" class="form-control" id="edit-proxy-ip" required>
+            </div>
+            <div class="col-md-3">
+              <label class="form-label">Port *</label>
+              <input type="text" class="form-control" id="edit-proxy-port" required>
+            </div>
+            <div class="col-md-3">
+              <label class="form-label">Port SOCKS5</label>
+              <input type="text" class="form-control" id="edit-proxy-port-socks5">
+            </div>
+            <div class="col-md-3">
+              <label class="form-label">Loại</label>
+              <select class="form-select" id="edit-proxy-type">
+                <option value="HTTP">HTTP</option>
+                <option value="HTTPS">HTTPS</option>
+                <option value="SOCKS4">SOCKS4</option>
+                <option value="SOCKS5">SOCKS5</option>
+              </select>
+            </div>
+            <div class="col-md-3">
+              <label class="form-label">Username</label>
+              <input type="text" class="form-control" id="edit-proxy-username">
+            </div>
+            <div class="col-md-3">
+              <label class="form-label">Password</label>
+              <input type="password" class="form-control" id="edit-proxy-password">
+            </div>
+            <div class="col-md-3">
+              <label class="form-label">Quốc gia</label>
+              <input type="text" class="form-control" id="edit-proxy-location">
+            </div>
+            <div class="col-md-3">
+              <label class="form-label">Trạng thái</label>
+              <select class="form-select" id="edit-proxy-status">
+                <option value="active">Hoạt động</option>
+                <option value="inactive">Không hoạt động</option>
+                <option value="expired">Hết hạn</option>
+              </select>
+            </div>
+            <div class="col-md-3">
+              <label class="form-label">Ngày hết hạn</label>
+              <input type="date" class="form-control" id="edit-proxy-expire-at">
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">Ghi chú</label>
+              <input type="text" class="form-control" id="edit-proxy-note">
+            </div>
+          </div>
+        </form>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Hủy</button>
+        <button type="button" class="btn btn-primary" id="save-edit-proxy-btn">Lưu thay đổi</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// Thêm proxy thủ công
+document.getElementById('add-proxy-form').onsubmit = async function(e) {
+  e.preventDefault();
+  
+  const formData = {
+    name: document.getElementById('proxy-name').value,
+    ip: document.getElementById('proxy-ip').value,
+    port: document.getElementById('proxy-port').value,
+    port_socks5: document.getElementById('proxy-port-socks5').value || null,
+    type: document.getElementById('proxy-type').value,
+    username: document.getElementById('proxy-username').value || null,
+    password: document.getElementById('proxy-password').value || null,
+    location: document.getElementById('proxy-location').value || null,
+    status: document.getElementById('proxy-status').value,
+    expire_at: document.getElementById('proxy-expire-at').value || null,
+    note: document.getElementById('proxy-note').value || null,
+    source: 'manual'
+  };
+  
+  try {
+    const res = await fetch('/api/proxies', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(formData)
+    });
+    const json = await res.json();
+    
+    if(json.status === 'success') {
+      showToast('✅ Đã thêm proxy thành công!', 'success');
+      this.reset();
+      loadProxies();
+      updateStatistics();
+    } else {
+      showToast(`❌ ${json.error}`, 'error');
+    }
+  } catch (error) {
+    showToast('❌ Lỗi kết nối!', 'error');
+  }
+};
+
+
+
+
+// Load danh sách proxy
+async function loadProxies() {
+  try {
+    const res = await fetch('/api/proxies');
+    const json = await res.json();
+    const listDiv = document.getElementById('proxies-list');
+    
+    if(json.status === 'success') {
+      if(json.proxies.length === 0) {
+        listDiv.innerHTML = '<div class="alert alert-info">📝 Chưa có proxy nào. Hãy thêm proxy đầu tiên!</div>';
+        return;
+      }
+      
+      let html = `
+        <div class="table-responsive">
+          <table class="table table-striped table-hover">
+            <thead class="table-dark">
+              <tr>
+                <th>Tên</th>
+                <th>IP:Port</th>
+                <th>Username</th>
+                <th>Loại</th>
+                <th>Quốc gia</th>
+                <th>Trạng thái</th>
+                <th>Hết hạn</th>
+                <th>Nguồn</th>
+                <th>Ghi chú</th>
+                <th>Hành động</th>
+              </tr>
+            </thead>
+            <tbody>
+      `;
+      
+      json.proxies.forEach(proxy => {
+        const statusClass = proxy.status === 'active' ? 'success' : proxy.status === 'inactive' ? 'warning' : 'danger';
+        const sourceBadge = proxy.source === 'zingproxy' ? 'bg-info' : 'bg-secondary';
+        const expiryDate = proxy.expire_at ? new Date(proxy.expire_at).toLocaleDateString('vi-VN') : 'N/A';
+        const sourceText = proxy.source === 'zingproxy' ? `[${proxy.source_id}]` : '';
+        
+        html += `
+          <tr>
+            <td><strong>${proxy.name}</strong> ${sourceText}</td>
+            <td><code>${proxy.ip}:${proxy.port}</code>${proxy.port_socks5 ? `<br><small class="text-muted">SOCKS5: ${proxy.port_socks5}</small>` : ''}</td>
+            <td>${proxy.username || 'N/A'}</td>
+            <td><span class="badge bg-primary">${proxy.type || 'HTTP'}</span></td>
+            <td>${proxy.location || 'N/A'}</td>
+            <td><span class="badge bg-${statusClass}">${proxy.status}</span></td>
+            <td>${expiryDate}</td>
+            <td><span class="badge ${sourceBadge}">${proxy.source}</span></td>
+            <td><small>${proxy.note || ''}</small></td>
+            <td>
+              <div class="btn-group" role="group">
+                <button class='btn btn-sm btn-primary me-1' onclick='editProxy(${proxy.id})' title="Chỉnh sửa">
+                  <i class="fas fa-edit"></i>
+                </button>
+                <button class='btn btn-sm btn-danger' onclick='deleteProxy(${proxy.id})' title="Xóa">
+                  <i class="fas fa-trash"></i>
+                </button>
+              </div>
+            </td>
+          </tr>
+        `;
+      });
+      
+      html += '</tbody></table></div>';
+      listDiv.innerHTML = html;
+    } else {
+      listDiv.innerHTML = `<div class='alert alert-danger'>❌ ${json.error}</div>`;
+    }
+  } catch (error) {
+    document.getElementById('proxies-list').innerHTML = '<div class="alert alert-danger">❌ Lỗi kết nối!</div>';
+  }
+}
+
+// Chỉnh sửa proxy
+async function editProxy(proxyId) {
+  try {
+    const res = await fetch(`/api/proxies/${proxyId}`);
+    const json = await res.json();
+    
+    if(json.status === 'success') {
+      const proxy = json.proxy;
+      
+      // Điền dữ liệu vào form
+      document.getElementById('edit-proxy-id').value = proxy.id;
+      document.getElementById('edit-proxy-name').value = proxy.name;
+      document.getElementById('edit-proxy-ip').value = proxy.ip;
+      document.getElementById('edit-proxy-port').value = proxy.port;
+      document.getElementById('edit-proxy-port-socks5').value = proxy.port_socks5 || '';
+      document.getElementById('edit-proxy-type').value = proxy.type || 'HTTP';
+      document.getElementById('edit-proxy-username').value = proxy.username || '';
+      document.getElementById('edit-proxy-password').value = ''; // Không hiển thị password
+      document.getElementById('edit-proxy-location').value = proxy.location || '';
+      document.getElementById('edit-proxy-status').value = proxy.status;
+      document.getElementById('edit-proxy-expire-at').value = proxy.expire_at || '';
+      document.getElementById('edit-proxy-note').value = proxy.note || '';
+      
+      // Hiển thị modal
+      const modal = new bootstrap.Modal(document.getElementById('editProxyModal'));
+      modal.show();
+    } else {
+      showToast(`❌ ${json.error}`, 'error');
+    }
+  } catch (error) {
+    showToast('❌ Lỗi kết nối!', 'error');
+  }
+}
+
+// Lưu chỉnh sửa proxy
+document.getElementById('save-edit-proxy-btn').onclick = async function() {
+  const proxyId = document.getElementById('edit-proxy-id').value;
+  
+  const formData = {
+    name: document.getElementById('edit-proxy-name').value,
+    ip: document.getElementById('edit-proxy-ip').value,
+    port: document.getElementById('edit-proxy-port').value,
+    port_socks5: document.getElementById('edit-proxy-port-socks5').value || null,
+    type: document.getElementById('edit-proxy-type').value,
+    username: document.getElementById('edit-proxy-username').value || null,
+    password: document.getElementById('edit-proxy-password').value || null,
+    location: document.getElementById('edit-proxy-location').value || null,
+    status: document.getElementById('edit-proxy-status').value,
+    expire_at: document.getElementById('edit-proxy-expire-at').value || null,
+    note: document.getElementById('edit-proxy-note').value || null
+  };
+  
+  try {
+    const res = await fetch(`/api/proxies/${proxyId}`, {
+      method: 'PUT',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(formData)
+    });
+    const json = await res.json();
+    
+    if(json.status === 'success') {
+      showToast('✅ Đã cập nhật proxy thành công!', 'success');
+      bootstrap.Modal.getInstance(document.getElementById('editProxyModal')).hide();
+      loadProxies();
+      updateStatistics();
+    } else {
+      showToast(`❌ ${json.error}`, 'error');
+    }
+  } catch (error) {
+    showToast('❌ Lỗi kết nối!', 'error');
+  }
+};
+
+// Xóa proxy
+async function deleteProxy(proxyId) {
+  if(!confirm('⚠️ Bạn có chắc muốn xóa proxy này?')) return;
+  
+  try {
+    const res = await fetch(`/api/proxies/${proxyId}`, {method: 'DELETE'});
+    const json = await res.json();
+    
+    if(json.status === 'success') {
+      showToast('✅ Đã xóa proxy!', 'success');
+      loadProxies();
+      updateStatistics();
+    } else {
+      showToast(`❌ ${json.error}`, 'error');
+    }
+  } catch (error) {
+    showToast('❌ Lỗi kết nối!', 'error');
+  }
+}
+
+// Cập nhật thống kê
+async function updateStatistics() {
+  try {
+    const res = await fetch('/api/proxies/statistics');
+    const json = await res.json();
+    
+    if(json.status === 'success') {
+      document.getElementById('total-proxies').textContent = json.total_proxies;
+      document.getElementById('active-proxies').textContent = json.active_proxies;
+      document.getElementById('expiring-proxies').textContent = json.expiring_proxies;
+      document.getElementById('zingproxy-proxies').textContent = json.zingproxy_proxies;
+    }
+  } catch (error) {
+    console.error('Lỗi cập nhật thống kê:', error);
+  }
+}
+
+// Cập nhật trạng thái đồng bộ
+async function updateSyncStatus() {
+  try {
+    const res = await fetch('/api/proxies/sync-status');
+    const json = await res.json();
+    
+    if(json.status === 'success') {
+      document.getElementById('zingproxy-accounts').textContent = json.zingproxy_accounts;
+      document.getElementById('zingproxy-proxies').textContent = json.zingproxy_proxies;
+      document.getElementById('total-proxies').textContent = json.total_proxies;
+    }
+  } catch (error) {
+    console.error('Lỗi cập nhật trạng thái đồng bộ:', error);
+  }
+}
+
+// Refresh sync status
+document.getElementById('refresh-sync-status-btn').onclick = function() {
+  updateSyncStatus();
+  updateStatistics();
+};
+
+// Export proxy
+document.getElementById('export-proxies-btn').onclick = async function() {
+  try {
+    const res = await fetch('/api/proxies/export');
+    const json = await res.json();
+    
+    if(json.status === 'success') {
+      // Tạo file download
+      const dataStr = JSON.stringify(json.proxies, null, 2);
+      const dataBlob = new Blob([dataStr], {type: 'application/json'});
+      const url = URL.createObjectURL(dataBlob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `proxies_${new Date().toISOString().split('T')[0]}.json`;
+      link.click();
+      URL.revokeObjectURL(url);
+      
+      showToast('✅ Đã export proxy thành công!', 'success');
+    } else {
+      showToast(`❌ ${json.error}`, 'error');
+    }
+  } catch (error) {
+    showToast('❌ Lỗi kết nối!', 'error');
+  }
+};
+
+// Làm mới danh sách
+document.getElementById('refresh-proxies-btn').onclick = function() {
+  loadProxies();
+  updateStatistics();
+};
+
+// Đồng bộ từ ZingProxy
+document.getElementById('sync-zingproxy-btn').onclick = function() {
+  const modal = new bootstrap.Modal(document.getElementById('syncZingProxyModal'));
+  modal.show();
+};
+
+// Xác nhận đồng bộ ZingProxy
+document.getElementById('confirm-sync-btn').onclick = async function() {
+  const btn = this;
+  const originalText = btn.innerHTML;
+  
+  try {
+    // Disable button và hiển thị loading
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Đang đồng bộ...';
+    
+    // Đóng modal
+    const modal = bootstrap.Modal.getInstance(document.getElementById('syncZingProxyModal'));
+    modal.hide();
+    
+    // Gọi API đồng bộ
+    const res = await fetch('/api/proxies/sync-zingproxy', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      }
+    });
+    
+    const json = await res.json();
+    
+    if(json.status === 'success') {
+      showToast(`✅ Đồng bộ thành công! Đã xử lý ${json.total_proxies_synced} proxy`, 'success');
+      // Làm mới danh sách và thống kê
+      loadProxies();
+      updateStatistics();
+    } else {
+      showToast(`❌ ${json.error}`, 'error');
+    }
+  } catch (error) {
+    showToast('❌ Lỗi kết nối khi đồng bộ!', 'error');
+  } finally {
+    // Restore button
+    btn.disabled = false;
+    btn.innerHTML = originalText;
+  }
+};
+
+// Hiển thị toast notification
+function showToast(message, type = 'info') {
+  const toastContainer = document.getElementById('toast-container') || createToastContainer();
+  const toast = document.createElement('div');
+  toast.className = `toast align-items-center text-bg-${type === 'error' ? 'danger' : type} border-0`;
+  toast.setAttribute('role', 'alert');
+  toast.innerHTML = `
+    <div class="d-flex">
+      <div class="toast-body">${message}</div>
+      <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
+    </div>
+  `;
+  
+  toastContainer.appendChild(toast);
+  const bsToast = new bootstrap.Toast(toast);
+  bsToast.show();
+  
+  // Tự động xóa toast sau khi ẩn
+  toast.addEventListener('hidden.bs.toast', () => {
+    toast.remove();
+  });
+}
+
+// Tạo toast container nếu chưa có
+function createToastContainer() {
+  const container = document.createElement('div');
+  container.id = 'toast-container';
+  container.className = 'toast-container position-fixed top-0 end-0 p-3';
+  container.style.zIndex = '9999';
+  document.body.appendChild(container);
+  return container;
+}
+
+// Load dữ liệu khi trang load
+document.addEventListener('DOMContentLoaded', function() {
+  loadProxies();
+  updateStatistics();
+  updateSyncStatus();
+});
+</script>
+{% endblock %}

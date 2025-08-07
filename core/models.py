@@ -157,4 +157,51 @@ class ZingProxy(db.Model):
     created_at = db.Column(db.String(64), nullable=True)  # Thời gian tạo từ API
     auto_renew = db.Column(db.Boolean, nullable=True)  # Tự động gia hạn
     link_change_ip = db.Column(db.String(512), nullable=True)  # Link đổi IP
-    last_updated = db.Column(db.DateTime, nullable=True) 
+    last_updated = db.Column(db.DateTime, nullable=True)
+
+class Proxy(db.Model):
+    __tablename__ = 'proxies'
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+    name = db.Column(db.String(128), nullable=False)  # Tên proxy
+    ip = db.Column(db.String(64), nullable=False)
+    port = db.Column(db.String(16), nullable=False)
+    port_socks5 = db.Column(db.String(16), nullable=True)  # Port SOCKS5 (nếu có)
+    username = db.Column(db.String(128), nullable=True)
+    password_encrypted = db.Column(db.String(512), nullable=True)  # Password đã mã hóa
+    type = db.Column(db.String(32), nullable=True)  # HTTP, HTTPS, SOCKS4, SOCKS5
+    location = db.Column(db.String(64), nullable=True)  # Quốc gia/địa điểm
+    status = db.Column(db.String(32), default='active')  # active, inactive, expired
+    expire_at = db.Column(db.String(32), nullable=True)  # Ngày hết hạn
+    source = db.Column(db.String(32), default='manual')  # manual, zingproxy, other
+    source_id = db.Column(db.String(64), nullable=True)  # ID từ nguồn gốc (nếu có)
+    note = db.Column(db.String(512), nullable=True)  # Ghi chú
+    auto_renew = db.Column(db.Boolean, default=False)  # Tự động gia hạn
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    @property
+    def password(self):
+        """Get decrypted password"""
+        return decrypt_sensitive_data(self.password_encrypted) if self.password_encrypted else None
+
+    @password.setter
+    def password(self, value):
+        """Set encrypted password"""
+        self.password_encrypted = encrypt_sensitive_data(value) if value else None
+
+    @staticmethod
+    def validate_ip(ip):
+        """Validate IP address format"""
+        import re
+        pattern = r'^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$'
+        return bool(re.match(pattern, ip))
+
+    @staticmethod
+    def validate_port(port):
+        """Validate port number"""
+        try:
+            port_num = int(port)
+            return 1 <= port_num <= 65535
+        except ValueError:
+            return False 

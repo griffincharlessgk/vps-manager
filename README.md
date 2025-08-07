@@ -35,7 +35,7 @@ A comprehensive VPS and account management system with automated notifications, 
 1. **Clone the repository**
    ```bash
    git clone <repository-url>
-   cd Manager
+   cd vps-manager
    ```
 
 2. **Create virtual environment**
@@ -63,41 +63,35 @@ A comprehensive VPS and account management system with automated notifications, 
    python scripts/init_db.py
    ```
 
-6. **Run the application**
-   ```bash
-   python -m flask run
-   ```
+## 🏃‍♂️ Running the Application
 
-## 📋 Setup for Different Platforms
-
-### Windows Setup
+### Method 1: Run from ui directory (Recommended)
 ```bash
-# Generate production keys
-python scripts/generate_keys.py
-
-# Setup PostgreSQL (Windows)
-python scripts/setup_postgresql_windows.py
-
-# Initialize database
-python scripts/init_db.py
-
-# Run application
+cd ui
 python -m flask run
 ```
 
-### Linux/macOS Setup
+### Method 2: Run from root directory with FLASK_APP
 ```bash
-# Generate production keys
-python scripts/generate_keys.py
-
-# Setup PostgreSQL
-python scripts/setup_postgresql.py
-
-# Initialize database
-python scripts/init_db.py
-
-# Run application
+export FLASK_APP=ui.app
 python -m flask run
+```
+
+### Method 3: Run directly with Python
+```bash
+cd ui
+python app.py
+```
+
+### Method 4: Use --app flag from root directory
+```bash
+python -m flask --app ui.app run
+```
+
+### Access the Application
+After running any of the above methods, open your browser and go to:
+```
+http://localhost:5000
 ```
 
 ## 🔐 Security Features
@@ -222,16 +216,21 @@ scripts/backup_windows.bat
 
 ### Common Issues
 
-1. **Database Connection Errors**
+1. **Flask Application Not Found**
+   - Make sure you're in the correct directory (`ui/` folder)
+   - Use `export FLASK_APP=ui.app` when running from root directory
+   - Or use `python -m flask --app ui.app run` from root directory
+
+2. **Database Connection Errors**
    - Check `DATABASE_URL` environment variable
    - Ensure database is running
    - Verify credentials
 
-2. **Encryption Errors**
+3. **Encryption Errors**
    - Ensure `ENCRYPTION_KEY` is set
    - Don't change encryption key after data is stored
 
-3. **Telegram Notifications Not Working**
+4. **Telegram Notifications Not Working**
    - Verify `TELEGRAM_TOKEN` is correct
    - Check bot permissions
    - Verify chat IDs
@@ -240,6 +239,7 @@ scripts/backup_windows.bat
 ```bash
 export FLASK_ENV=development
 export LOG_LEVEL=DEBUG
+cd ui
 python -m flask run
 ```
 

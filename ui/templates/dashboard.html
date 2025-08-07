@@ -70,6 +70,9 @@
       </div>
     </div>
   </div>
+
+  
+
 </div>
 
 <script>
@@ -206,9 +209,19 @@ fetch('/api/expiry-warnings').then(r=>r.json()).then(data=>{
 // Load chi tiết cảnh báo hết hạn
 displayExpiryDetails();
 
+// Cập nhật thời gian cập nhật cuối
+function updateLastUpdateTime() {
+  const now = new Date();
+  document.getElementById('last-update-time').textContent = now.toLocaleString('vi-VN');
+}
+
 // Kiểm tra URL parameters khi trang load
 document.addEventListener('DOMContentLoaded', function() {
     checkUrlParams();
+    updateLastUpdateTime();
+    
+    // Cập nhật thời gian mỗi phút
+    setInterval(updateLastUpdateTime, 60000);
 });
 </script>
 {% endblock %} 

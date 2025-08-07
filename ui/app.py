@@ -221,15 +221,30 @@ def create_app():
         warnings = []
         
         from sqlalchemy import text
+        from datetime import datetime, timedelta
         
         try:
+            today = datetime.now().date()
+            warning_days = 7
+            
             # Lấy tất cả VPS
             cursor = db.session.execute(text('SELECT id, name, service, ip, expiry FROM vps'))
             vps_list = cursor.fetchall()
             
             for vps in vps_list:
                 if vps.expiry:
-                    warnings.append(f"VPS '{vps.name or vps.id}' sẽ hết hạn vào {vps.expiry}")
+                    try:
+                        expiry_date = datetime.strptime(vps.expiry, '%Y-%m-%d').date()
+                        days_left = (expiry_date - today).days
+                        if 0 <= days_left <= warning_days:
+                            if days_left == 0:
+                                warnings.append(f"🚨 VPS '{vps.name or vps.id}' HẾT HẠN HÔM NAY!")
+                            elif days_left == 1:
+                                warnings.append(f"⚠️ VPS '{vps.name or vps.id}' hết hạn ngày mai ({vps.expiry})")
+                            else:
+                                warnings.append(f"📅 VPS '{vps.name or vps.id}' hết hạn trong {days_left} ngày ({vps.expiry})")
+                    except:
+                        warnings.append(f"VPS '{vps.name or vps.id}' sẽ hết hạn vào {vps.expiry}")
             
             # Lấy tất cả Accounts
             cursor = db.session.execute(text('SELECT id, username, service, expiry FROM accounts'))
@@ -237,7 +252,68 @@ def create_app():
             
             for acc in acc_list:
                 if acc.expiry:
-                    warnings.append(f"Account '{acc.username or acc.id}' sẽ hết hạn vào {acc.expiry}")
+                    try:
+                        expiry_date = datetime.strptime(acc.expiry, '%Y-%m-%d').date()
+                        days_left = (expiry_date - today).days
+                        if 0 <= days_left <= warning_days:
+                            if days_left == 0:
+                                warnings.append(f"🚨 Account '{acc.username or acc.id}' HẾT HẠN HÔM NAY!")
+                            elif days_left == 1:
+                                warnings.append(f"⚠️ Account '{acc.username or acc.id}' hết hạn ngày mai ({acc.expiry})")
+                            else:
+                                warnings.append(f"📅 Account '{acc.username or acc.id}' hết hạn trong {days_left} ngày ({acc.expiry})")
+                    except:
+                        warnings.append(f"Account '{acc.username or acc.id}' sẽ hết hạn vào {acc.expiry}")
+            
+            # Thêm thông tin proxy sắp hết hạn nếu user đã đăng nhập
+            if 'user_id' in session:
+                # Proxy từ ZingProxy
+                cursor = db.session.execute(text('''
+                    SELECT zp.proxy_id, zp.ip, zp.type, zp.expire_at, zpa.email 
+                    FROM zingproxies zp 
+                    JOIN zingproxy_accounts zpa ON zp.account_id = zpa.id 
+                    WHERE zpa.user_id = :user_id AND zp.expire_at IS NOT NULL
+                '''), {'user_id': session['user_id']})
+                proxy_list = cursor.fetchall()
+                
+                for proxy in proxy_list:
+                    if proxy.expire_at:
+                        try:
+                            expiry_date = datetime.strptime(proxy.expire_at, '%Y-%m-%d').date()
+                            days_left = (expiry_date - today).days
+                            if 0 <= days_left <= warning_days:
+                                if days_left == 0:
+                                    warnings.append(f"🚨 Proxy {proxy.proxy_id} ({proxy.ip}) HẾT HẠN HÔM NAY!")
+                                elif days_left == 1:
+                                    warnings.append(f"⚠️ Proxy {proxy.proxy_id} ({proxy.ip}) hết hạn ngày mai ({proxy.expire_at})")
+                                else:
+                                    warnings.append(f"📅 Proxy {proxy.proxy_id} ({proxy.ip}) hết hạn trong {days_left} ngày ({proxy.expire_at})")
+                        except:
+                            warnings.append(f"Proxy {proxy.proxy_id} ({proxy.ip}) sẽ hết hạn vào {proxy.expire_at}")
+                
+                # Proxy từ hệ thống quản lý proxy
+                cursor = db.session.execute(text('''
+                    SELECT name, ip, port, expire_at, source 
+                    FROM proxies 
+                    WHERE user_id = :user_id AND expire_at IS NOT NULL
+                '''), {'user_id': session['user_id']})
+                managed_proxy_list = cursor.fetchall()
+                
+                for proxy in managed_proxy_list:
+                    if proxy.expire_at:
+                        try:
+                            expiry_date = datetime.strptime(proxy.expire_at, '%Y-%m-%d').date()
+                            days_left = (expiry_date - today).days
+                            if 0 <= days_left <= warning_days:
+                                source_text = f"[{proxy.source}]" if proxy.source != 'manual' else ""
+                                if days_left == 0:
+                                    warnings.append(f"🚨 Proxy {proxy.name} ({proxy.ip}:{proxy.port}) {source_text} HẾT HẠN HÔM NAY!")
+                                elif days_left == 1:
+                                    warnings.append(f"⚠️ Proxy {proxy.name} ({proxy.ip}:{proxy.port}) {source_text} hết hạn ngày mai ({proxy.expire_at})")
+                                else:
+                                    warnings.append(f"📅 Proxy {proxy.name} ({proxy.ip}:{proxy.port}) {source_text} hết hạn trong {days_left} ngày ({proxy.expire_at})")
+                        except:
+                            warnings.append(f"Proxy {proxy.name} ({proxy.ip}:{proxy.port}) sẽ hết hạn vào {proxy.expire_at}")
             
             return {'status': 'success', 'warnings': warnings}
         except Exception as e:
@@ -874,8 +950,10 @@ def create_app():
         data = request.json
         access_token = data.get('access_token')
         update_frequency = int(data.get('update_frequency', 1))
+        
         if not access_token:
             return {'status': 'error', 'error': 'Thiếu access token'}, 400
+        
         try:
             client = ZingProxyClient(access_token=access_token)
             account_info = client.get_account_details()
@@ -887,6 +965,16 @@ def create_app():
                 created_dt = datetime.strptime(created_at, '%Y-%m-%d %H:%M:%S') if created_at else datetime.now()
             except:
                 created_dt = datetime.now()
+            
+            # Kiểm tra xem email đã tồn tại cho user này chưa
+            existing_account = ZingProxyAccount.query.filter_by(
+                user_id=session['user_id'], 
+                email=email
+            ).first()
+            
+            if existing_account:
+                return {'status': 'error', 'error': 'Tài khoản với email này đã tồn tại'}, 400
+            
             acc = manager.add_zingproxy_account(
                 user_id=session['user_id'],
                 email=email,
@@ -895,6 +983,40 @@ def create_app():
                 created_at=created_dt,
                 update_frequency=update_frequency
             )
+            
+            # Tự động cập nhật proxy sau khi thêm tài khoản
+            try:
+                proxies = client.get_all_active_proxies()
+                manager.update_zingproxy_list(acc.id, proxies)
+                
+                # Tự động import proxy vào hệ thống quản lý proxy
+                try:
+                    zingproxy_data = []
+                    for proxy in proxies:
+                        zingproxy_data.append({
+                            'proxy_id': proxy.get('proxy_id'),
+                            'ip': proxy.get('ip'),
+                            'port': proxy.get('port'),
+                            'port_socks5': proxy.get('port_socks5'),
+                            'username': proxy.get('username'),
+                            'password': proxy.get('password'),
+                            'status': proxy.get('status'),
+                            'expire_at': proxy.get('expire_at'),
+                            'location': proxy.get('location'),
+                            'type': proxy.get('type'),
+                            'note': proxy.get('note'),
+                            'auto_renew': proxy.get('auto_renew')
+                        })
+                    
+                    if zingproxy_data:
+                        imported_count = manager.import_proxies_from_zingproxy(session['user_id'], zingproxy_data)
+                        logger.info(f"Đã tự động import {imported_count} proxy từ ZingProxy vào hệ thống quản lý proxy")
+                except Exception as e:
+                    logger.warning(f"Không thể import proxy vào hệ thống quản lý: {e}")
+                    
+            except Exception as e:
+                logger.warning(f"Không thể cập nhật proxy cho tài khoản mới: {e}")
+            
             return {'status': 'success', 'account': manager.zingproxy_account_to_dict(acc)}
         except ZingProxyAPIError as e:
             return {'status': 'error', 'error': str(e)}, 400
@@ -941,11 +1063,387 @@ def create_app():
         manager.delete_zingproxy_account(acc_id)
         return {'status': 'success', 'message': 'Đã xóa tài khoản ZingProxy'}
 
+    @app.route('/api/zingproxy-update-account/<int:acc_id>', methods=['POST'])
+    def api_zingproxy_update_account(acc_id):
+        """Cập nhật thông tin tài khoản ZingProxy"""
+        if 'user_id' not in session:
+            return {'status': 'error', 'error': 'Chưa đăng nhập'}, 401
+        acc = ZingProxyAccount.query.get(acc_id)
+        if not acc or acc.user_id != session['user_id']:
+            return {'status': 'error', 'error': 'Không tìm thấy tài khoản'}, 404
+        try:
+            client = ZingProxyClient(access_token=acc.access_token)
+            account_info = client.get_account_details()
+            balance = account_info.get('balance', 0)
+            manager.update_zingproxy_account(acc_id, balance)
+            return {'status': 'success', 'message': 'Đã cập nhật thông tin tài khoản'}
+        except ZingProxyAPIError as e:
+            return {'status': 'error', 'error': str(e)}, 400
+
+    @app.route('/api/zingproxy-update-all-accounts', methods=['POST'])
+    def api_zingproxy_update_all_accounts():
+        """Cập nhật tất cả tài khoản ZingProxy của user"""
+        if 'user_id' not in session:
+            return {'status': 'error', 'error': 'Chưa đăng nhập'}, 401
+        try:
+            accounts = ZingProxyAccount.query.filter_by(user_id=session['user_id']).all()
+            updated_count = 0
+            for acc in accounts:
+                try:
+                    client = ZingProxyClient(access_token=acc.access_token)
+                    account_info = client.get_account_details()
+                    balance = account_info.get('balance', 0)
+                    manager.update_zingproxy_account(acc.id, balance)
+                    updated_count += 1
+                except Exception as e:
+                    logger.error(f"Lỗi cập nhật tài khoản {acc.id}: {e}")
+                    continue
+            return {'status': 'success', 'updated_count': updated_count}
+        except Exception as e:
+            return {'status': 'error', 'error': str(e)}, 500
+
+    @app.route('/api/zingproxy-update-all-proxies', methods=['POST'])
+    def api_zingproxy_update_all_proxies():
+        """Cập nhật proxy cho tất cả tài khoản ZingProxy của user"""
+        if 'user_id' not in session:
+            return {'status': 'error', 'error': 'Chưa đăng nhập'}, 401
+        try:
+            accounts = ZingProxyAccount.query.filter_by(user_id=session['user_id']).all()
+            updated_count = 0
+            for acc in accounts:
+                try:
+                    client = ZingProxyClient(access_token=acc.access_token)
+                    proxies = client.get_all_active_proxies()
+                    manager.update_zingproxy_list(acc.id, proxies)
+                    updated_count += 1
+                except Exception as e:
+                    logger.error(f"Lỗi cập nhật proxy cho tài khoản {acc.id}: {e}")
+                    continue
+            return {'status': 'success', 'updated_count': updated_count}
+        except Exception as e:
+            return {'status': 'error', 'error': str(e)}, 500
+
+    @app.route('/api/zingproxy-statistics')
+    def api_zingproxy_statistics():
+        """Lấy thống kê ZingProxy cho user"""
+        if 'user_id' not in session:
+            return {'status': 'error', 'error': 'Chưa đăng nhập'}, 401
+        try:
+            accounts = ZingProxyAccount.query.filter_by(user_id=session['user_id']).all()
+            total_accounts = len(accounts)
+            total_balance = sum(acc.balance or 0 for acc in accounts)
+            
+            # Đếm tổng số proxy
+            total_proxies = 0
+            expiring_proxies = 0
+            from datetime import datetime, timedelta
+            
+            for acc in accounts:
+                proxies = ZingProxy.query.filter_by(account_id=acc.id).all()
+                total_proxies += len(proxies)
+                
+                # Đếm proxy sắp hết hạn (trong vòng 7 ngày)
+                for proxy in proxies:
+                    if proxy.expire_at:
+                        try:
+                            expiry_date = datetime.strptime(proxy.expire_at, '%Y-%m-%d')
+                            days_until_expiry = (expiry_date - datetime.now()).days
+                            if 0 <= days_until_expiry <= 7:
+                                expiring_proxies += 1
+                        except:
+                            pass
+            
+            return {
+                'status': 'success',
+                'total_accounts': total_accounts,
+                'total_balance': round(total_balance, 2),
+                'total_proxies': total_proxies,
+                'expiring_proxies': expiring_proxies
+            }
+        except Exception as e:
+            return {'status': 'error', 'error': str(e)}, 500
+
+    # ==================== PROXY MANAGEMENT API ====================
+
+    @app.route('/api/proxies', methods=['GET'])
+    def api_proxies_list():
+        """Lấy danh sách proxy của user"""
+        if 'user_id' not in session:
+            return {'status': 'error', 'error': 'Chưa đăng nhập'}, 401
+        try:
+            proxies = manager.list_proxies(session['user_id'])
+            return {'status': 'success', 'proxies': proxies}
+        except Exception as e:
+            return {'status': 'error', 'error': str(e)}, 500
+
+    @app.route('/api/proxies', methods=['POST'])
+    def api_proxies_add():
+        """Thêm proxy mới"""
+        if 'user_id' not in session:
+            return {'status': 'error', 'error': 'Chưa đăng nhập'}, 401
+        try:
+            data = request.json
+            proxy = manager.add_proxy(session['user_id'], data)
+            return {'status': 'success', 'proxy': manager.proxy_to_dict(proxy)}
+        except ValueError as e:
+            return {'status': 'error', 'error': str(e)}, 400
+        except Exception as e:
+            return {'status': 'error', 'error': str(e)}, 500
+
+    @app.route('/api/proxies/<int:proxy_id>', methods=['GET'])
+    def api_proxies_get(proxy_id):
+        """Lấy thông tin proxy"""
+        if 'user_id' not in session:
+            return {'status': 'error', 'error': 'Chưa đăng nhập'}, 401
+        try:
+            proxy = manager.get_proxy_by_id(proxy_id, session['user_id'])
+            if not proxy:
+                return {'status': 'error', 'error': 'Không tìm thấy proxy'}, 404
+            return {'status': 'success', 'proxy': manager.proxy_to_dict(proxy)}
+        except Exception as e:
+            return {'status': 'error', 'error': str(e)}, 500
+
+    @app.route('/api/proxies/<int:proxy_id>', methods=['PUT'])
+    def api_proxies_update(proxy_id):
+        """Cập nhật proxy"""
+        if 'user_id' not in session:
+            return {'status': 'error', 'error': 'Chưa đăng nhập'}, 401
+        try:
+            data = request.json
+            proxy = manager.update_proxy(proxy_id, session['user_id'], data)
+            return {'status': 'success', 'proxy': manager.proxy_to_dict(proxy)}
+        except ValueError as e:
+            return {'status': 'error', 'error': str(e)}, 400
+        except Exception as e:
+            return {'status': 'error', 'error': str(e)}, 500
+
+    @app.route('/api/proxies/<int:proxy_id>', methods=['DELETE'])
+    def api_proxies_delete(proxy_id):
+        """Xóa proxy"""
+        if 'user_id' not in session:
+            return {'status': 'error', 'error': 'Chưa đăng nhập'}, 401
+        try:
+            manager.delete_proxy(proxy_id, session['user_id'])
+            return {'status': 'success', 'message': 'Đã xóa proxy'}
+        except Exception as e:
+            return {'status': 'error', 'error': str(e)}, 500
+
+    @app.route('/api/proxies/statistics')
+    def api_proxies_statistics():
+        """Lấy thống kê proxy"""
+        if 'user_id' not in session:
+            return {'status': 'error', 'error': 'Chưa đăng nhập'}, 401
+        try:
+            from core.models import Proxy, ZingProxyAccount
+            from datetime import datetime
+            
+            proxies = Proxy.query.filter_by(user_id=session['user_id']).all()
+            total_proxies = len(proxies)
+            active_proxies = len([p for p in proxies if p.status == 'active'])
+            zingproxy_proxies = len([p for p in proxies if p.source == 'zingproxy'])
+            
+            # Đếm số tài khoản ZingProxy
+            zingproxy_accounts = ZingProxyAccount.query.filter_by(user_id=session['user_id']).count()
+            
+            # Đếm proxy sắp hết hạn (trong vòng 7 ngày)
+            expiring_proxies = 0
+            for proxy in proxies:
+                if proxy.expire_at:
+                    try:
+                        expiry_date = datetime.strptime(proxy.expire_at, '%Y-%m-%d')
+                        days_until_expiry = (expiry_date - datetime.now()).days
+                        if 0 <= days_until_expiry <= 7:
+                            expiring_proxies += 1
+                    except:
+                        pass
+            
+            return {
+                'status': 'success',
+                'total_proxies': total_proxies,
+                'active_proxies': active_proxies,
+                'expiring_proxies': expiring_proxies,
+                'zingproxy_proxies': zingproxy_proxies,
+                'zingproxy_accounts': zingproxy_accounts
+            }
+        except Exception as e:
+            return {'status': 'error', 'error': str(e)}, 500
+
+    @app.route('/api/proxies/import-zingproxy', methods=['POST'])
+    def api_proxies_import_zingproxy():
+        """Import proxy từ ZingProxy"""
+        if 'user_id' not in session:
+            return {'status': 'error', 'error': 'Chưa đăng nhập'}, 401
+        try:
+            # Lấy tất cả proxy từ ZingProxy
+            zingproxy_data = []
+            accounts = ZingProxyAccount.query.filter_by(user_id=session['user_id']).all()
+            
+            for acc in accounts:
+                proxies = ZingProxy.query.filter_by(account_id=acc.id).all()
+                for proxy in proxies:
+                    zingproxy_data.append({
+                        'proxy_id': proxy.proxy_id,
+                        'ip': proxy.ip,
+                        'port': proxy.port,
+                        'port_socks5': proxy.port_socks5,
+                        'username': proxy.username,
+                        'password': proxy.password,
+                        'status': proxy.status,
+                        'expire_at': proxy.expire_at,
+                        'location': proxy.location,
+                        'type': proxy.type,
+                        'note': proxy.note,
+                        'auto_renew': proxy.auto_renew
+                    })
+            
+            if not zingproxy_data:
+                return {'status': 'error', 'error': 'Không có proxy nào từ ZingProxy để import'}, 400
+            
+            imported_count = manager.import_proxies_from_zingproxy(session['user_id'], zingproxy_data)
+            return {'status': 'success', 'imported_count': imported_count}
+        except Exception as e:
+            return {'status': 'error', 'error': str(e)}, 500
+
+    @app.route('/api/proxies/export')
+    def api_proxies_export():
+        """Export danh sách proxy"""
+        if 'user_id' not in session:
+            return {'status': 'error', 'error': 'Chưa đăng nhập'}, 401
+        try:
+            proxies = manager.list_proxies(session['user_id'])
+            return {'status': 'success', 'proxies': proxies}
+        except Exception as e:
+            return {'status': 'error', 'error': str(e)}, 500
+
+    @app.route('/api/proxies/sync-zingproxy', methods=['POST'])
+    def api_proxies_sync_zingproxy():
+        """Đồng bộ proxy từ ZingProxy thủ công"""
+        if 'user_id' not in session:
+            return {'status': 'error', 'error': 'Chưa đăng nhập'}, 401
+        try:
+            from core.api_clients.zingproxy import ZingProxyClient, ZingProxyAPIError
+            from core.models import ZingProxyAccount
+            
+            # Lấy tất cả tài khoản ZingProxy của user
+            accounts = ZingProxyAccount.query.filter_by(user_id=session['user_id']).all()
+            
+            if not accounts:
+                return {'status': 'error', 'error': 'Không có tài khoản ZingProxy nào. Vui lòng thêm tài khoản ZingProxy trước.'}, 400
+            
+            total_proxies_synced = 0
+            total_accounts_processed = 0
+            failed_accounts = []
+            
+            logger.info(f"[API] Starting ZingProxy sync for user {session['user_id']} with {len(accounts)} accounts")
+            
+            for acc in accounts:
+                try:
+                    logger.info(f"[API] Processing ZingProxy account {acc.id} ({acc.email})")
+                    client = ZingProxyClient(access_token=acc.access_token)
+                    proxies = client.get_all_active_proxies()
+                    
+                    logger.info(f"[API] Found {len(proxies)} proxies from account {acc.id}")
+                    
+                    # Import vào hệ thống quản lý proxy
+                    zingproxy_data = []
+                    for proxy in proxies:
+                        zingproxy_data.append({
+                            'proxy_id': proxy.get('proxy_id'),
+                            'ip': proxy.get('ip'),
+                            'port': proxy.get('port'),
+                            'port_socks5': proxy.get('port_socks5'),
+                            'username': proxy.get('username'),
+                            'password': proxy.get('password'),
+                            'status': proxy.get('status'),
+                            'expire_at': proxy.get('expire_at'),
+                            'location': proxy.get('location'),
+                            'type': proxy.get('type'),
+                            'note': proxy.get('note'),
+                            'auto_renew': proxy.get('auto_renew')
+                        })
+                    
+                    if zingproxy_data:
+                        imported_count = manager.import_proxies_from_zingproxy(session['user_id'], zingproxy_data)
+                        total_proxies_synced += imported_count
+                        total_accounts_processed += 1
+                        logger.info(f"[API] Successfully synced {imported_count} proxies from account {acc.id}")
+                    else:
+                        logger.warning(f"[API] No proxies found for account {acc.id}")
+                        
+                except ZingProxyAPIError as e:
+                    error_msg = f"Lỗi API ZingProxy cho tài khoản {acc.email}: {str(e)}"
+                    logger.error(f"[API] {error_msg}")
+                    failed_accounts.append({'email': acc.email, 'error': str(e)})
+                    continue
+                except Exception as e:
+                    error_msg = f"Lỗi đồng bộ cho tài khoản {acc.email}: {str(e)}"
+                    logger.error(f"[API] {error_msg}")
+                    failed_accounts.append({'email': acc.email, 'error': str(e)})
+                    continue
+            
+            # Tạo thông báo kết quả
+            result_message = f"Đã đồng bộ {total_proxies_synced} proxy từ {total_accounts_processed}/{len(accounts)} tài khoản"
+            if failed_accounts:
+                result_message += f". {len(failed_accounts)} tài khoản gặp lỗi."
+            
+            logger.info(f"[API] ZingProxy sync completed: {result_message}")
+            
+            return {
+                'status': 'success', 
+                'total_proxies_synced': total_proxies_synced,
+                'total_accounts_processed': total_accounts_processed,
+                'total_accounts': len(accounts),
+                'failed_accounts': failed_accounts,
+                'message': result_message
+            }
+            
+        except Exception as e:
+            logger.error(f"[API] Error in ZingProxy sync: {e}")
+            return {'status': 'error', 'error': f'Lỗi đồng bộ: {str(e)}'}, 500
+
+    @app.route('/api/proxies/sync-status', methods=['GET'])
+    def api_proxies_sync_status():
+        """Kiểm tra trạng thái đồng bộ ZingProxy"""
+        if 'user_id' not in session:
+            return {'status': 'error', 'error': 'Chưa đăng nhập'}, 401
+        try:
+            from core.models import ZingProxyAccount, Proxy
+            
+            # Lấy thông tin tài khoản ZingProxy
+            accounts = ZingProxyAccount.query.filter_by(user_id=session['user_id']).all()
+            
+            # Lấy thống kê proxy từ ZingProxy
+            zingproxy_proxies = Proxy.query.filter_by(
+                user_id=session['user_id'], 
+                source='zingproxy'
+            ).count()
+            
+            # Lấy thống kê proxy tổng
+            total_proxies = Proxy.query.filter_by(user_id=session['user_id']).count()
+            
+            return {
+                'status': 'success',
+                'zingproxy_accounts': len(accounts),
+                'zingproxy_proxies': zingproxy_proxies,
+                'total_proxies': total_proxies,
+                'last_sync': None  # TODO: Thêm trường last_sync vào database
+            }
+            
+        except Exception as e:
+            logger.error(f"[API] Error getting sync status: {e}")
+            return {'status': 'error', 'error': f'Lỗi lấy trạng thái: {str(e)}'}, 500
+
     @app.route('/zingproxy')
     def zingproxy_page():
         auth_check = require_auth()
         if auth_check: return auth_check
         return render_template('zingproxy.html')
+
+    @app.route('/proxies')
+    def proxies_page():
+        auth_check = require_auth()
+        if auth_check: return auth_check
+        return render_template('proxies.html')
 
     @app.route('/notifications')
     def notifications_page():

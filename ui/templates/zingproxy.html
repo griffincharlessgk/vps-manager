@@ -4,14 +4,17 @@
 
 <!-- Form thêm tài khoản ZingProxy -->
 <div class="card mb-4">
+  <div class="card-header">
+    <h5 class="card-title mb-0">Thêm tài khoản ZingProxy</h5>
+  </div>
   <div class="card-body">
-    <h5 class="card-title">Thêm tài khoản ZingProxy</h5>
     <form id="zingproxy-login-form" class="row g-3">
-      <div class="col-md-6">
+      <div class="col-md-8">
         <label class="form-label">Access Token</label>
         <input type="password" class="form-control" id="zingproxy-access-token" placeholder="Nhập access token của bạn" required>
+        <div class="form-text">Access token sẽ được mã hóa và lưu an toàn. Email sẽ được lấy tự động từ API.</div>
       </div>
-      <div class="col-md-3">
+      <div class="col-md-2">
         <label class="form-label">Tần suất cập nhật</label>
         <select class="form-select" id="zingproxy-update-frequency">
           <option value="1">1 ngày</option>
@@ -20,8 +23,10 @@
           <option value="30">30 ngày</option>
         </select>
       </div>
-      <div class="col-md-3 d-flex align-items-end">
-        <button type="submit" class="btn btn-primary">Lưu tài khoản</button>
+      <div class="col-md-2 d-flex align-items-end">
+        <button type="submit" class="btn btn-primary w-100">
+          <i class="fas fa-save"></i> Lưu tài khoản
+        </button>
       </div>
     </form>
     <div id="zingproxy-login-result"></div>
@@ -30,21 +35,40 @@
 
 <!-- Danh sách tài khoản ZingProxy -->
 <div class="card mb-4">
-  <div class="card-body">
-    <div class="d-flex justify-content-between align-items-center mb-3">
+  <div class="card-header">
+    <div class="d-flex justify-content-between align-items-center">
       <h5 class="card-title mb-0">Tài khoản ZingProxy</h5>
+      <div>
+        <button class="btn btn-success me-2" id="update-all-accounts-btn">
+          <i class="fas fa-sync"></i> Cập nhật tất cả tài khoản
+        </button>
+        <button class="btn btn-info" id="refresh-accounts-btn">
+          <i class="fas fa-refresh"></i> Làm mới
+        </button>
+      </div>
     </div>
+  </div>
+  <div class="card-body">
     <div id="zingproxy-accounts-list"></div>
   </div>
 </div>
 
 <!-- Danh sách proxy -->
 <div class="card mb-4">
-  <div class="card-body">
-    <div class="d-flex justify-content-between align-items-center mb-3">
+  <div class="card-header">
+    <div class="d-flex justify-content-between align-items-center">
       <h5 class="card-title mb-0">Danh sách Proxy</h5>
-      <button class="btn btn-success" id="update-all-proxies-btn">Cập nhật tất cả proxy</button>
+      <div>
+        <button class="btn btn-success me-2" id="update-all-proxies-btn">
+          <i class="fas fa-sync"></i> Cập nhật tất cả proxy
+        </button>
+        <button class="btn btn-info" id="refresh-proxies-btn">
+          <i class="fas fa-refresh"></i> Làm mới
+        </button>
+      </div>
     </div>
+  </div>
+  <div class="card-body">
     <div id="zingproxy-proxies-list"></div>
   </div>
 </div>
@@ -53,132 +77,344 @@
 let currentAccountId = null;
 
 // Đăng nhập/lưu tài khoản
-
 document.getElementById('zingproxy-login-form').onsubmit = async function(e) {
   e.preventDefault();
   const accessToken = document.getElementById('zingproxy-access-token').value;
   const updateFrequency = document.getElementById('zingproxy-update-frequency').value;
   const resultDiv = document.getElementById('zingproxy-login-result');
-  resultDiv.innerHTML = '';
-  const res = await fetch('/api/zingproxy-login', {
-    method: 'POST',
-    headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({access_token: accessToken, update_frequency: updateFrequency})
-  });
-  const json = await res.json();
-  if(json.status === 'success') {
-    resultDiv.innerHTML = '<div class="alert alert-success">Đã lưu tài khoản!</div>';
-    this.reset();
-    loadAccounts();
-  } else {
-    resultDiv.innerHTML = `<div class='alert alert-danger'>${json.error}</div>`;
+  
+  if (!accessToken) {
+    resultDiv.innerHTML = '<div class="alert alert-danger">Vui lòng nhập access token!</div>';
+    return;
+  }
+  
+  resultDiv.innerHTML = '<div class="alert alert-info">Đang xử lý...</div>';
+  
+  try {
+    const res = await fetch('/api/zingproxy-login', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        access_token: accessToken, 
+        update_frequency: updateFrequency
+      })
+    });
+    const json = await res.json();
+    
+    if(json.status === 'success') {
+      resultDiv.innerHTML = '<div class="alert alert-success">✅ Đã lưu tài khoản thành công!</div>';
+      this.reset();
+      loadAccounts();
+      loadAllProxies();
+    } else {
+      resultDiv.innerHTML = `<div class='alert alert-danger'>❌ ${json.error}</div>`;
+    }
+  } catch (error) {
+    resultDiv.innerHTML = '<div class="alert alert-danger">❌ Lỗi kết nối!</div>';
   }
 };
 
 // Load danh sách tài khoản
 async function loadAccounts() {
-  const res = await fetch('/api/zingproxy-accounts');
-  const json = await res.json();
-  const listDiv = document.getElementById('zingproxy-accounts-list');
-  if(json.status === 'success') {
-    if(json.accounts.length === 0) {
-      listDiv.innerHTML = '<div class="alert alert-info">Chưa có tài khoản nào.</div>';
-      return;
+  try {
+    const res = await fetch('/api/zingproxy-accounts');
+    const json = await res.json();
+    const listDiv = document.getElementById('zingproxy-accounts-list');
+    
+    if(json.status === 'success') {
+      if(json.accounts.length === 0) {
+        listDiv.innerHTML = '<div class="alert alert-info">📝 Chưa có tài khoản nào. Hãy thêm tài khoản đầu tiên!</div>';
+        return;
+      }
+      
+      let html = `
+        <div class="table-responsive">
+          <table class="table table-striped table-hover">
+            <thead class="table-dark">
+              <tr>
+                <th>Email</th>
+                <th>Số dư</th>
+                <th>Ngày tạo</th>
+                <th>Cập nhật cuối</th>
+                <th>Tần suất</th>
+                <th>Trạng thái</th>
+                <th>Hành động</th>
+              </tr>
+            </thead>
+            <tbody>
+      `;
+      
+      json.accounts.forEach(acc => {
+        const lastUpdated = acc.last_updated ? new Date(acc.last_updated).toLocaleString('vi-VN') : 'Chưa cập nhật';
+        const createdDate = acc.created_at ? new Date(acc.created_at).toLocaleDateString('vi-VN') : 'N/A';
+        const statusClass = acc.last_updated ? 'success' : 'warning';
+        const statusText = acc.last_updated ? 'Hoạt động' : 'Chưa cập nhật';
+        
+        html += `
+          <tr>
+            <td><strong>${acc.email}</strong></td>
+            <td><span class="badge bg-success fs-6">$${acc.balance || 0}</span></td>
+            <td>${createdDate}</td>
+            <td>${lastUpdated}</td>
+            <td><span class="badge bg-info">${acc.update_frequency} ngày</span></td>
+            <td><span class="badge bg-${statusClass}">${statusText}</span></td>
+            <td>
+              <div class="btn-group" role="group">
+                <button class='btn btn-sm btn-info me-1' onclick='updateAccount(${acc.id})' title="Cập nhật thông tin tài khoản">
+                  <i class="fas fa-sync"></i>
+                </button>
+                <button class='btn btn-sm btn-warning me-1' onclick='updateProxies(${acc.id})' title="Cập nhật proxy">
+                  <i class="fas fa-list"></i>
+                </button>
+                <button class='btn btn-sm btn-danger' onclick='deleteAccount(${acc.id})' title="Xóa tài khoản">
+                  <i class="fas fa-trash"></i>
+                </button>
+              </div>
+            </td>
+          </tr>
+        `;
+      });
+      
+      html += '</tbody></table></div>';
+      listDiv.innerHTML = html;
+    } else {
+      listDiv.innerHTML = `<div class='alert alert-danger'>❌ ${json.error}</div>`;
     }
-    let html = '<table class="table table-bordered"><thead><tr><th>Email</th><th>Balance</th><th>Ngày tạo</th><th>Cập nhật cuối</th><th>Hành động</th></tr></thead><tbody>';
-    json.accounts.forEach(acc => {
-      html += `<tr>
-        <td>${acc.email}</td>
-        <td><span class="badge bg-success">$${acc.balance || 0}</span></td>
-        <td>${acc.created_at ? new Date(acc.created_at).toLocaleString('vi-VN') : ''}</td>
-        <td>${acc.last_updated ? new Date(acc.last_updated).toLocaleString('vi-VN') : ''}</td>
-        <td>
-          <button class='btn btn-sm btn-info me-1' onclick='updateProxies(${acc.id})'>Cập nhật proxy</button>
-          <button class='btn btn-sm btn-primary me-1' onclick='showProxies(${acc.id})'>Xem proxy</button>
-          <button class='btn btn-sm btn-danger' onclick='deleteAccount(${acc.id})'>Xóa</button>
-        </td>
-      </tr>`;
-    });
-    html += '</tbody></table>';
-    listDiv.innerHTML = html;
-  } else {
-    listDiv.innerHTML = `<div class='alert alert-danger'>${json.error}</div>`;
+  } catch (error) {
+    document.getElementById('zingproxy-accounts-list').innerHTML = '<div class="alert alert-danger">❌ Lỗi kết nối!</div>';
+  }
+}
+
+// Load tất cả proxy từ tất cả tài khoản
+async function loadAllProxies() {
+  try {
+    const res = await fetch('/api/zingproxy-accounts');
+    const json = await res.json();
+    
+    if(json.status === 'success' && json.accounts.length > 0) {
+      let allProxies = [];
+      
+      // Lấy proxy từ tất cả tài khoản
+      for(const acc of json.accounts) {
+        const proxyRes = await fetch(`/api/zingproxy-proxies/${acc.id}`);
+        const proxyJson = await proxyRes.json();
+        
+        if(proxyJson.status === 'success') {
+          allProxies = allProxies.concat(proxyJson.proxies);
+        }
+      }
+      
+      displayProxies(allProxies);
+    } else {
+      document.getElementById('zingproxy-proxies-list').innerHTML = '<div class="alert alert-info">📝 Chưa có proxy nào.</div>';
+    }
+  } catch (error) {
+    document.getElementById('zingproxy-proxies-list').innerHTML = '<div class="alert alert-danger">❌ Lỗi kết nối!</div>';
+  }
+}
+
+// Hiển thị danh sách proxy
+function displayProxies(proxies) {
+  const listDiv = document.getElementById('zingproxy-proxies-list');
+  
+  if(proxies.length === 0) {
+    listDiv.innerHTML = '<div class="alert alert-info">📝 Chưa có proxy nào.</div>';
+    return;
+  }
+  
+  let html = `
+    <div class="table-responsive">
+      <table class="table table-striped table-hover">
+        <thead class="table-dark">
+          <tr>
+            <th>ID</th>
+            <th>IP</th>
+            <th>Port HTTP</th>
+            <th>Port SOCKS5</th>
+            <th>Username</th>
+            <th>Password</th>
+            <th>Trạng thái</th>
+            <th>Hết hạn</th>
+            <th>Type</th>
+            <th>Note</th>
+          </tr>
+        </thead>
+        <tbody>
+  `;
+  
+  proxies.forEach(proxy => {
+    const statusClass = proxy.status === 'running' ? 'success' : 'warning';
+    const expiryDate = proxy.expire_at ? new Date(proxy.expire_at).toLocaleDateString('vi-VN') : 'N/A';
+    
+    html += `
+      <tr>
+        <td><code>${proxy.proxy_id}</code></td>
+        <td><strong>${proxy.ip || ''}</strong></td>
+        <td><span class="badge bg-primary">${proxy.port || ''}</span></td>
+        <td><span class="badge bg-secondary">${proxy.port_socks5 || ''}</span></td>
+        <td><code>${proxy.username || ''}</code></td>
+        <td><code>${proxy.password || ''}</code></td>
+        <td><span class="badge bg-${statusClass}">${proxy.status || ''}</span></td>
+        <td>${expiryDate}</td>
+        <td><span class="badge bg-info">${proxy.type || ''}</span></td>
+        <td>${proxy.note || ''}</td>
+      </tr>
+    `;
+  });
+  
+  html += '</tbody></table></div>';
+  listDiv.innerHTML = html;
+}
+
+// Cập nhật thông tin tài khoản
+async function updateAccount(accId) {
+  try {
+    const res = await fetch(`/api/zingproxy-update-account/${accId}`, {method: 'POST'});
+    const json = await res.json();
+    
+    if(json.status === 'success') {
+      showToast('✅ Đã cập nhật thông tin tài khoản!', 'success');
+      loadAccounts();
+      loadAllProxies();
+    } else {
+      showToast(`❌ ${json.error}`, 'error');
+    }
+  } catch (error) {
+    showToast('❌ Lỗi kết nối!', 'error');
   }
 }
 
 // Cập nhật proxy cho tài khoản
 async function updateProxies(accId) {
-  const res = await fetch(`/api/zingproxy-update-proxies/${accId}`, {method: 'POST'});
-  const json = await res.json();
-  if(json.status === 'success') {
-    alert('Đã cập nhật proxy!');
-    showProxies(accId);
-  } else {
-    alert(json.error);
-  }
-}
-
-// Xem proxy của tài khoản
-async function showProxies(accId) {
-  currentAccountId = accId;
-  const res = await fetch(`/api/zingproxy-proxies/${accId}`);
-  const json = await res.json();
-  const listDiv = document.getElementById('zingproxy-proxies-list');
-  if(json.status === 'success') {
-    if(json.proxies.length === 0) {
-      listDiv.innerHTML = '<div class="alert alert-info">Chưa có proxy nào.</div>';
-      return;
+  try {
+    const res = await fetch(`/api/zingproxy-update-proxies/${accId}`, {method: 'POST'});
+    const json = await res.json();
+    
+    if(json.status === 'success') {
+      showToast(`✅ Đã cập nhật ${json.count} proxy!`, 'success');
+      loadAllProxies();
+    } else {
+      showToast(`❌ ${json.error}`, 'error');
     }
-    let html = '<table class="table table-bordered"><thead><tr><th>ID</th><th>IP</th><th>Port HTTP</th><th>Port SOCKS5</th><th>Username</th><th>Password</th><th>Trạng thái</th><th>Hết hạn</th><th>Type</th><th>Note</th></tr></thead><tbody>';
-    json.proxies.forEach(proxy => {
-      html += `<tr>
-        <td>${proxy.proxy_id}</td>
-        <td>${proxy.ip || ''}</td>
-        <td>${proxy.port || ''}</td>
-        <td>${proxy.port_socks5 || ''}</td>
-        <td>${proxy.username || ''}</td>
-        <td>${proxy.password || ''}</td>
-        <td><span class="badge bg-${proxy.status === 'running' ? 'success' : 'warning'}">${proxy.status || ''}</span></td>
-        <td>${proxy.expire_at || ''}</td>
-        <td><span class="badge bg-info">${proxy.type || ''}</span></td>
-        <td>${proxy.note || ''}</td>
-      </tr>`;
-    });
-    html += '</tbody></table>';
-    listDiv.innerHTML = html;
-  } else {
-    listDiv.innerHTML = `<div class='alert alert-danger'>${json.error}</div>`;
+  } catch (error) {
+    showToast('❌ Lỗi kết nối!', 'error');
   }
 }
 
 // Xóa tài khoản
 async function deleteAccount(accId) {
-  if(!confirm('Bạn có chắc muốn xóa tài khoản này?')) return;
-  const res = await fetch(`/api/zingproxy-delete-account/${accId}`, {method: 'DELETE'});
-  const json = await res.json();
-  if(json.status === 'success') {
-    alert('Đã xóa tài khoản!');
-    loadAccounts();
-    document.getElementById('zingproxy-proxies-list').innerHTML = '';
-  } else {
-    alert(json.error);
+  if(!confirm('⚠️ Bạn có chắc muốn xóa tài khoản này? Hành động này không thể hoàn tác!')) return;
+  
+  try {
+    const res = await fetch(`/api/zingproxy-delete-account/${accId}`, {method: 'DELETE'});
+    const json = await res.json();
+    
+    if(json.status === 'success') {
+      showToast('✅ Đã xóa tài khoản!', 'success');
+      loadAccounts();
+      loadAllProxies();
+    } else {
+      showToast(`❌ ${json.error}`, 'error');
+    }
+  } catch (error) {
+    showToast('❌ Lỗi kết nối!', 'error');
   }
 }
 
-// Cập nhật tất cả proxy cho tất cả tài khoản
-
-document.getElementById('update-all-proxies-btn').onclick = async function() {
-  const res = await fetch('/api/zingproxy-accounts');
-  const json = await res.json();
-  if(json.status === 'success') {
-    for(const acc of json.accounts) {
-      await updateProxies(acc.id);
+// Cập nhật tất cả tài khoản
+document.getElementById('update-all-accounts-btn').onclick = async function() {
+  this.disabled = true;
+  this.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Đang cập nhật...';
+  
+  try {
+    const res = await fetch('/api/zingproxy-update-all-accounts', {method: 'POST'});
+    const json = await res.json();
+    
+    if(json.status === 'success') {
+      showToast(`✅ Đã cập nhật ${json.updated_count} tài khoản!`, 'success');
+      loadAccounts();
+      loadAllProxies();
+    } else {
+      showToast(`❌ ${json.error}`, 'error');
     }
-    if(currentAccountId) showProxies(currentAccountId);
+  } catch (error) {
+    showToast('❌ Lỗi kết nối!', 'error');
+  } finally {
+    this.disabled = false;
+    this.innerHTML = '<i class="fas fa-sync"></i> Cập nhật tất cả tài khoản';
   }
 };
 
-// Load danh sách khi trang load
-loadAccounts();
+// Cập nhật tất cả proxy
+document.getElementById('update-all-proxies-btn').onclick = async function() {
+  this.disabled = true;
+  this.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Đang cập nhật...';
+  
+  try {
+    const res = await fetch('/api/zingproxy-update-all-proxies', {method: 'POST'});
+    const json = await res.json();
+    
+    if(json.status === 'success') {
+      showToast(`✅ Đã cập nhật proxy cho ${json.updated_count} tài khoản!`, 'success');
+      loadAllProxies();
+    } else {
+      showToast(`❌ ${json.error}`, 'error');
+    }
+  } catch (error) {
+    showToast('❌ Lỗi kết nối!', 'error');
+  } finally {
+    this.disabled = false;
+    this.innerHTML = '<i class="fas fa-sync"></i> Cập nhật tất cả proxy';
+  }
+};
+
+// Làm mới danh sách tài khoản
+document.getElementById('refresh-accounts-btn').onclick = function() {
+  loadAccounts();
+};
+
+// Làm mới danh sách proxy
+document.getElementById('refresh-proxies-btn').onclick = function() {
+  loadAllProxies();
+};
+
+// Hiển thị toast notification
+function showToast(message, type = 'info') {
+  const toastContainer = document.getElementById('toast-container') || createToastContainer();
+  const toast = document.createElement('div');
+  toast.className = `toast align-items-center text-bg-${type === 'error' ? 'danger' : type} border-0`;
+  toast.setAttribute('role', 'alert');
+  toast.innerHTML = `
+    <div class="d-flex">
+      <div class="toast-body">${message}</div>
+      <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
+    </div>
+  `;
+  
+  toastContainer.appendChild(toast);
+  const bsToast = new bootstrap.Toast(toast);
+  bsToast.show();
+  
+  // Tự động xóa toast sau khi ẩn
+  toast.addEventListener('hidden.bs.toast', () => {
+    toast.remove();
+  });
+}
+
+// Tạo toast container nếu chưa có
+function createToastContainer() {
+  const container = document.createElement('div');
+  container.id = 'toast-container';
+  container.className = 'toast-container position-fixed top-0 end-0 p-3';
+  container.style.zIndex = '9999';
+  document.body.appendChild(container);
+  return container;
+}
+
+// Load dữ liệu khi trang load
+document.addEventListener('DOMContentLoaded', function() {
+  loadAccounts();
+  loadAllProxies();
+});
 </script>
 {% endblock %} 

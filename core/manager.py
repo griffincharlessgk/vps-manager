@@ -1,6 +1,13 @@
-from typing import Dict, List, Optional
-from core.models import db, VPS, Account, BitLaunchAPI, BitLaunchVPS, ZingProxyAccount, ZingProxy, User
-from datetime import datetime
+from typing import Dict, List, Optional, Any
+from core.models import db, VPS, Account, BitLaunchAPI, BitLaunchVPS, ZingProxyAccount, ZingProxy, User, Proxy
+from core.encryption import encrypt_sensitive_data, decrypt_sensitive_data
+from core.api_clients.bitlaunch import BitLaunchClient, BitLaunchAPIError
+from core.api_clients.zingproxy import ZingProxyClient, ZingProxyAPIError
+from core.notifier import notify_expiry_telegram_per_user
+import logging
+from datetime import datetime, timedelta
+
+logger = logging.getLogger(__name__)
 
 def vps_to_dict(vps: VPS) -> dict:
     return {
@@ -365,13 +372,18 @@ def get_zingproxy_accounts_needing_update() -> list:
     now = datetime.now()
     accs = ZingProxyAccount.query.all()
     need_update = []
+    
     for acc in accs:
         if not acc.last_updated:
             need_update.append(acc)
             continue
+        
         days_since_update = (now - acc.last_updated).days
-        if days_since_update >= (acc.update_frequency or 1):
+        update_frequency = acc.update_frequency or 1
+        
+        if days_since_update >= update_frequency:
             need_update.append(acc)
+    
     return need_update 
 
 def update_user_notify_hour(user_id: int, notify_hour: int) -> bool:
@@ -393,4 +405,202 @@ def get_user_notify_hour(user_id: int) -> int:
         user = User.query.get(user_id)
         return user.notify_hour if user and user.notify_hour else 8
     except:
-        return 8 
+        return 8
+
+# ==================== PROXY MANAGEMENT ====================
+
+def proxy_to_dict(proxy: Proxy) -> dict:
+    """Convert Proxy object to dictionary"""
+    return {
+        'id': proxy.id,
+        'name': proxy.name,
+        'ip': proxy.ip,
+        'port': proxy.port,
+        'port_socks5': proxy.port_socks5,
+        'username': proxy.username,
+        'password': proxy.password,  # Sẽ được mã hóa
+        'type': proxy.type,
+        'location': proxy.location,
+        'status': proxy.status,
+        'expire_at': proxy.expire_at,
+        'source': proxy.source,
+        'source_id': proxy.source_id,
+        'note': proxy.note,
+        'auto_renew': proxy.auto_renew,
+        'created_at': proxy.created_at.isoformat() if proxy.created_at else None,
+        'updated_at': proxy.updated_at.isoformat() if proxy.updated_at else None
+    }
+
+def add_proxy(user_id: int, proxy_data: dict) -> Proxy:
+    """Thêm proxy mới"""
+    # Validate dữ liệu
+    if not proxy_data.get('name') or not proxy_data.get('ip') or not proxy_data.get('port'):
+        raise ValueError("Tên, IP và port là bắt buộc")
+    
+    if not Proxy.validate_ip(proxy_data['ip']):
+        raise ValueError("IP không hợp lệ")
+    
+    if not Proxy.validate_port(proxy_data['port']):
+        raise ValueError("Port không hợp lệ")
+    
+    # Kiểm tra trùng lặp
+    existing = Proxy.query.filter_by(
+        user_id=user_id,
+        ip=proxy_data['ip'],
+        port=proxy_data['port']
+    ).first()
+    
+    if existing:
+        raise ValueError("Proxy với IP và port này đã tồn tại")
+    
+    proxy = Proxy(
+        user_id=user_id,
+        name=proxy_data['name'],
+        ip=proxy_data['ip'],
+        port=proxy_data['port'],
+        port_socks5=proxy_data.get('port_socks5'),
+        username=proxy_data.get('username'),
+        password=proxy_data.get('password'),
+        type=proxy_data.get('type', 'HTTP'),
+        location=proxy_data.get('location'),
+        status=proxy_data.get('status', 'active'),
+        expire_at=proxy_data.get('expire_at'),
+        source=proxy_data.get('source', 'manual'),
+        source_id=proxy_data.get('source_id'),
+        note=proxy_data.get('note'),
+        auto_renew=proxy_data.get('auto_renew', False)
+    )
+    
+    db.session.add(proxy)
+    db.session.commit()
+    return proxy
+
+def update_proxy(proxy_id: int, user_id: int, proxy_data: dict) -> Proxy:
+    """Cập nhật proxy"""
+    proxy = Proxy.query.filter_by(id=proxy_id, user_id=user_id).first()
+    if not proxy:
+        raise ValueError("Không tìm thấy proxy")
+    
+    # Validate dữ liệu nếu có thay đổi IP/port
+    if 'ip' in proxy_data and proxy_data['ip'] != proxy.ip:
+        if not Proxy.validate_ip(proxy_data['ip']):
+            raise ValueError("IP không hợp lệ")
+    
+    if 'port' in proxy_data and proxy_data['port'] != proxy.port:
+        if not Proxy.validate_port(proxy_data['port']):
+            raise ValueError("Port không hợp lệ")
+    
+    # Kiểm tra trùng lặp nếu thay đổi IP/port
+    if ('ip' in proxy_data and proxy_data['ip'] != proxy.ip) or ('port' in proxy_data and proxy_data['port'] != proxy.port):
+        new_ip = proxy_data.get('ip', proxy.ip)
+        new_port = proxy_data.get('port', proxy.port)
+        existing = Proxy.query.filter_by(
+            user_id=user_id,
+            ip=new_ip,
+            port=new_port
+        ).filter(Proxy.id != proxy_id).first()
+        
+        if existing:
+            raise ValueError("Proxy với IP và port này đã tồn tại")
+    
+    # Cập nhật các trường
+    for key, value in proxy_data.items():
+        if hasattr(proxy, key):
+            setattr(proxy, key, value)
+    
+    db.session.commit()
+    return proxy
+
+def delete_proxy(proxy_id: int, user_id: int) -> None:
+    """Xóa proxy"""
+    proxy = Proxy.query.filter_by(id=proxy_id, user_id=user_id).first()
+    if proxy:
+        db.session.delete(proxy)
+        db.session.commit()
+
+def list_proxies(user_id: int) -> List[dict]:
+    """Lấy danh sách proxy của user"""
+    proxies = Proxy.query.filter_by(user_id=user_id).order_by(Proxy.created_at.desc()).all()
+    return [proxy_to_dict(p) for p in proxies]
+
+def get_proxy_by_id(proxy_id: int, user_id: int) -> Optional[Proxy]:
+    """Lấy proxy theo ID"""
+    return Proxy.query.filter_by(id=proxy_id, user_id=user_id).first()
+
+def import_proxies_from_zingproxy(user_id: int, zingproxy_data: List[dict]) -> int:
+    """Import proxy từ ZingProxy"""
+    imported_count = 0
+    updated_count = 0
+    error_count = 0
+    
+    logger.info(f"[Manager] Starting import of {len(zingproxy_data)} proxies from ZingProxy for user {user_id}")
+    
+    for proxy_data in zingproxy_data:
+        try:
+            proxy_id = proxy_data.get('proxy_id', 'Unknown')
+            
+            # Tạo tên proxy từ thông tin có sẵn
+            proxy_name = f"ZingProxy_{proxy_id}"
+            if proxy_data.get('type'):
+                proxy_name = f"ZingProxy_{proxy_data.get('type')}_{proxy_id}"
+            
+            # Kiểm tra xem proxy đã tồn tại chưa
+            existing = Proxy.query.filter_by(
+                user_id=user_id,
+                source='zingproxy',
+                source_id=proxy_id
+            ).first()
+            
+            if existing:
+                # Cập nhật proxy hiện có
+                logger.info(f"[Manager] Updating existing proxy {proxy_id}: {proxy_data.get('ip')}:{proxy_data.get('port')}")
+                existing.ip = proxy_data.get('ip', '')
+                existing.port = proxy_data.get('port', '')
+                existing.port_socks5 = proxy_data.get('port_socks5')
+                existing.username = proxy_data.get('username')
+                existing.password = proxy_data.get('password')
+                existing.status = proxy_data.get('status', 'active')
+                existing.expire_at = proxy_data.get('expire_at')
+                existing.location = proxy_data.get('location', 'vn')
+                existing.type = proxy_data.get('type', 'HTTP')
+                existing.note = proxy_data.get('note', '')
+                existing.auto_renew = proxy_data.get('auto_renew', False)
+                existing.updated_at = datetime.now()
+                updated_count += 1
+            else:
+                # Tạo proxy mới
+                logger.info(f"[Manager] Creating new proxy {proxy_id}: {proxy_data.get('ip')}:{proxy_data.get('port')}")
+                proxy = Proxy(
+                    user_id=user_id,
+                    name=proxy_name,
+                    ip=proxy_data.get('ip', ''),
+                    port=proxy_data.get('port', ''),
+                    port_socks5=proxy_data.get('port_socks5'),
+                    username=proxy_data.get('username'),
+                    password=proxy_data.get('password'),
+                    type=proxy_data.get('type', 'HTTP'),
+                    location=proxy_data.get('location', 'vn'),
+                    status=proxy_data.get('status', 'active'),
+                    expire_at=proxy_data.get('expire_at'),
+                    source='zingproxy',
+                    source_id=proxy_id,
+                    note=proxy_data.get('note', ''),
+                    auto_renew=proxy_data.get('auto_renew', False)
+                )
+                db.session.add(proxy)
+                imported_count += 1
+            
+        except Exception as e:
+            logger.error(f"[Manager] Error importing proxy {proxy_data.get('proxy_id')}: {e}")
+            error_count += 1
+            continue
+    
+    try:
+        db.session.commit()
+        logger.info(f"[Manager] Successfully imported {imported_count} new proxies, updated {updated_count} existing proxies, {error_count} errors")
+    except Exception as e:
+        logger.error(f"[Manager] Error committing to database: {e}")
+        db.session.rollback()
+        return 0
+    
+    return imported_count + updated_count 
