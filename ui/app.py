@@ -145,11 +145,44 @@ def create_app():
 
     @app.route('/api/vps')
     def list_vps():
-        vps_list = manager.list_vps()
-        for vps in vps_list:
-            if 'service' not in vps:
-                vps['service'] = ''
-        return jsonify(vps_list)
+        """Lấy danh sách VPS từ tất cả nguồn: manual, BitLaunch, CloudFly"""
+        if 'user_id' not in session:
+            return {'status': 'error', 'error': 'Chưa đăng nhập'}, 401
+        
+        try:
+            # Lấy VPS thủ công
+            manual_vps_list = manager.list_vps()
+            for vps in manual_vps_list:
+                if 'service' not in vps:
+                    vps['service'] = ''
+                vps['source'] = 'manual'  # Đánh dấu nguồn
+            
+            # Lấy VPS từ BitLaunch
+            bitlaunch_vps_list = manager.list_bitlaunch_vps(session['user_id'])
+            for vps in bitlaunch_vps_list:
+                vps['source'] = 'bitlaunch'  # Đánh dấu nguồn
+                # Map fields để phù hợp với UI
+                vps['service'] = 'BitLaunch'
+                vps['ip'] = vps.get('ip_address', 'N/A')
+                vps['expiry'] = None  # BitLaunch không có expiry
+            
+            # Lấy VPS từ CloudFly
+            cloudfly_vps_list = manager.list_cloudfly_vps(session['user_id'])
+            for vps in cloudfly_vps_list:
+                vps['source'] = 'cloudfly'  # Đánh dấu nguồn
+                # Map fields để phù hợp với UI
+                vps['service'] = 'CloudFly'
+                vps['ip'] = vps.get('ip_address', 'N/A')
+                vps['expiry'] = None  # CloudFly không có expiry
+            
+            # Kết hợp tất cả VPS
+            all_vps = manual_vps_list + bitlaunch_vps_list + cloudfly_vps_list
+            
+            return jsonify(all_vps)
+            
+        except Exception as e:
+            logger.error(f"Error listing VPS: {e}")
+            return {'status': 'error', 'error': str(e)}, 500
 
     @app.route('/api/vps', methods=['POST'])
     def add_vps():

@@ -54,6 +54,7 @@
   <thead>
     <tr>
       <th>ID</th>
+      <th>Nguồn</th>
       <th>Tên dịch vụ</th>
       <th>Tên VPS</th>
       <th>IP</th>
@@ -114,6 +115,10 @@ function filterVps() {
            (vps.service && vps.service.toLowerCase().includes(search));
     }
     if (ok && status) {
+      // VPS từ API không có expiry, bỏ qua filter status
+      if (!vps.expiry) {
+        return true;
+      }
       const today = new Date();
       const exp = new Date(vps.expiry);
       const diff = Math.ceil((exp - today) / (1000*60*60*24));
@@ -135,17 +140,45 @@ function renderVpsTable() {
   const end = start + rowsPerPage;
   filtered.slice(start, end).forEach(vps => {
     const tr = document.createElement('tr');
+    
+    // Hiển thị nguồn với badge màu
+    let sourceBadge = '';
+    if (vps.source === 'bitlaunch') {
+      sourceBadge = '<span class="badge bg-info">BitLaunch</span>';
+    } else if (vps.source === 'cloudfly') {
+      sourceBadge = '<span class="badge bg-warning">CloudFly</span>';
+    } else {
+      sourceBadge = '<span class="badge bg-secondary">Manual</span>';
+    }
+    
+    // Xác định actions dựa trên nguồn
+    let actions = '';
+    if (vps.source === 'manual') {
+      actions = `
+        <button class="btn btn-sm btn-warning me-1 admin-only" onclick='editVps(${JSON.stringify(vps)})'>Sửa</button>
+        <button class="btn btn-sm btn-danger admin-only" onclick='showDeleteModal("${vps.id}", "${vps.name||''}")'>Xóa</button>
+      `;
+    } else if (vps.source === 'bitlaunch') {
+      actions = `
+        <button class="btn btn-sm btn-info me-1" onclick='viewBitLaunchVps("${vps.id}")'>Chi tiết</button>
+        <span class="text-muted small">Tự động từ BitLaunch</span>
+      `;
+    } else if (vps.source === 'cloudfly') {
+      actions = `
+        <button class="btn btn-sm btn-info me-1" onclick='viewCloudFlyVps("${vps.id}")'>Chi tiết</button>
+        <span class="text-muted small">Tự động từ CloudFly</span>
+      `;
+    }
+    
     tr.innerHTML = `
       <td>${vps.id}</td>
+      <td>${sourceBadge}</td>
       <td>${vps.service || ''}</td>
       <td>${vps.name || ''}</td>
       <td>${vps.ip || ''}</td>
       <td>${vps.expiry || ''}</td>
       <td>${getStatus(vps.expiry)}</td>
-      <td>
-        <button class="btn btn-sm btn-warning me-1 admin-only" onclick='editVps(${JSON.stringify(vps)})'>Sửa</button>
-        <button class="btn btn-sm btn-danger admin-only" onclick='showDeleteModal("${vps.id}", "${vps.name||''}")'>Xóa</button>
-      </td>
+      <td>${actions}</td>
     `;
     tbody.appendChild(tr);
   });
@@ -252,6 +285,18 @@ document.getElementById('confirm-delete-btn').onclick = function() {
   modal.hide();
 };
 
+// Thêm các hàm để xem chi tiết VPS từ API
+function viewBitLaunchVps(vpsId) {
+  // Redirect đến trang BitLaunch để xem chi tiết
+  window.open('/bitlaunch', '_blank');
+}
+
+function viewCloudFlyVps(vpsId) {
+  // Redirect đến trang CloudFly để xem chi tiết
+  window.open('/cloudfly', '_blank');
+}
+
+// Load VPS data khi trang load
 loadVps();
 </script>
 {% endblock %} 
