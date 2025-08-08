@@ -185,9 +185,9 @@ def add_bitlaunch_vps(api_id: int, server_data: dict) -> BitLaunchVPS:
         # Cập nhật thông tin
         existing.name = server_data.get('name')
         existing.status = server_data.get('status')
-        existing.ip_address = server_data.get('ip_address')
-        existing.location = server_data.get('location')
-        existing.plan = server_data.get('plan')
+        existing.ip_address = server_data.get('ipv4')  # BitLaunch API trả về ipv4
+        existing.location = server_data.get('region')  # BitLaunch API trả về region
+        existing.plan = server_data.get('sizeDescription')  # BitLaunch API trả về sizeDescription
         existing.last_updated = datetime.now()
         db.session.commit()
         return existing
@@ -198,9 +198,9 @@ def add_bitlaunch_vps(api_id: int, server_data: dict) -> BitLaunchVPS:
         server_id=server_id,
         name=server_data.get('name'),
         status=server_data.get('status'),
-        ip_address=server_data.get('ip_address'),
-        location=server_data.get('location'),
-        plan=server_data.get('plan'),
+        ip_address=server_data.get('ipv4'),  # BitLaunch API trả về ipv4
+        location=server_data.get('region'),  # BitLaunch API trả về region
+        plan=server_data.get('sizeDescription'),  # BitLaunch API trả về sizeDescription
         created_at=datetime.now(),
         last_updated=datetime.now()
     )
