@@ -48,6 +48,13 @@ class CloudFlyClient:
     def list_instances(self) -> List[Dict]:
         """List all VPS instances"""
         response = self._make_request('GET', '/backend/api/instances')
+        # CloudFly API trả về object với 'results' chứa danh sách instances
+        if isinstance(response, dict) and 'results' in response:
+            return response['results']
+        # Fallback cho trường hợp API trả về trực tiếp danh sách
+        if isinstance(response, list):
+            return response
+        # Hoặc có thể có wrapper object khác
         return response.get('instances', [])
     
     def get_instance(self, instance_id: str) -> Dict:

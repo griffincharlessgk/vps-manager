@@ -4,7 +4,7 @@ import os
 from datetime import datetime, timedelta
 from core import notifier
 from core.scheduler import start_scheduler
-from core.models import db, User, VPS, Account
+from core.models import db, User, VPS, Account, CloudFlyAPI
 from werkzeug.security import check_password_hash
 from core.api_clients.bitlaunch import BitLaunchClient, BitLaunchAPIError
 from core.api_clients.zingproxy import ZingProxyClient, ZingProxyAPIError
@@ -1627,7 +1627,7 @@ def create_app():
         
         try:
             apis = manager.list_cloudfly_apis(session['user_id'])
-            return {'status': 'success', 'apis': apis}
+            return apis  # Trả về trực tiếp array thay vì wrap trong object
         except Exception as e:
             logger.error(f"Error listing CloudFly APIs: {e}")
             return {'status': 'error', 'error': str(e)}, 500
@@ -1640,31 +1640,37 @@ def create_app():
         
         try:
             data = request.json
-            email = data.get('email')
             api_token = data.get('api_token')
             update_frequency = data.get('update_frequency', 1)
             
-            if not email or not api_token:
-                return {'status': 'error', 'error': 'Thiếu thông tin bắt buộc'}, 400
+            if not api_token:
+                return {'status': 'error', 'error': 'Thiếu API Token'}, 400
             
-            # Validate email
-            if not CloudFlyAPI.validate_email(email):
-                return {'status': 'error', 'error': 'Email không hợp lệ'}, 400
-            
-            # Test API token
+            # Test API token và lấy thông tin user
             try:
                 client = CloudFlyClient(api_token)
                 user_info = client.get_user_info()
+                
+                # Lấy email và main_balance từ API response
+                email = user_info.get('email')
+                
+                # CloudFly API có structure phức tạp: clients[0].wallet.main_balance
+                main_balance = 0
+                if 'clients' in user_info and len(user_info['clients']) > 0:
+                    wallet = user_info['clients'][0].get('wallet', {})
+                    main_balance = wallet.get('main_balance', 0)
+                
+                if not email:
+                    return {'status': 'error', 'error': 'Không thể lấy email từ API'}, 400
+                
             except CloudFlyAPIError as e:
                 return {'status': 'error', 'error': f'API Token không hợp lệ: {str(e)}'}, 400
             
-            # Lưu API
+            # Lưu API với email lấy từ API
             api = manager.add_cloudfly_api(session['user_id'], email, api_token, update_frequency)
             
-            # Cập nhật thông tin tài khoản
-            balance = user_info.get('balance', 0)
-            account_limit = user_info.get('account_limit', 0)
-            manager.update_cloudfly_info(api.id, balance, account_limit)
+            # Cập nhật thông tin tài khoản với main_balance
+            manager.update_cloudfly_info(api.id, main_balance, 0)
             
             return {'status': 'success', 'message': 'Thêm API Token thành công'}
         except ValueError as e:
@@ -1708,9 +1714,15 @@ def create_app():
                     try:
                         client = CloudFlyClient(api.api_token)
                         user_info = client.get_user_info()
-                        balance = user_info.get('balance', 0)
-                        account_limit = user_info.get('account_limit', 0)
-                        manager.update_cloudfly_info(api.id, balance, account_limit)
+                        
+                        # CloudFly API có structure phức tạp: clients[0].wallet.main_balance
+                        main_balance = 0
+                        if 'clients' in user_info and len(user_info['clients']) > 0:
+                            wallet = user_info['clients'][0].get('wallet', {})
+                            main_balance = wallet.get('main_balance', 0)
+                        
+                        # CloudFly API không có account_limit, đặt = 0
+                        manager.update_cloudfly_info(api.id, main_balance, 0)
                         updated_count += 1
                     except Exception as e:
                         logger.error(f"Error updating CloudFly API {api.id}: {e}")
@@ -1729,7 +1741,7 @@ def create_app():
         
         try:
             vps_list = manager.list_cloudfly_vps(session['user_id'])
-            return {'status': 'success', 'vps': vps_list}
+            return vps_list  # Trả về trực tiếp array thay vì wrap trong object
         except Exception as e:
             logger.error(f"Error listing CloudFly VPS: {e}")
             return {'status': 'error', 'error': str(e)}, 500
@@ -1751,7 +1763,7 @@ def create_app():
                 return {'status': 'error', 'error': 'Không có quyền truy cập VPS này'}, 403
             
             vps_dict = manager.cloudfly_vps_to_dict(vps)
-            return {'status': 'success', 'vps': vps_dict}
+            return vps_dict  # Trả về trực tiếp dict thay vì wrap trong object
         except Exception as e:
             logger.error(f"Error getting CloudFly VPS detail: {e}")
             return {'status': 'error', 'error': str(e)}, 500

@@ -1,1 +1,482 @@
- 
+{% extends 'base.html' %}
+{% block content %}
+<h2 class="mb-4">Quản lý CloudFly</h2>
+
+<!-- Navigation tabs -->
+<ul class="nav nav-tabs mb-4" id="cloudflyTabs" role="tablist">
+  <li class="nav-item" role="presentation">
+    <button class="nav-link active" id="apis-tab" data-bs-toggle="tab" data-bs-target="#apis" type="button" role="tab">
+      API Tokens
+    </button>
+  </li>
+  <li class="nav-item" role="presentation">
+    <button class="nav-link" id="vps-tab" data-bs-toggle="tab" data-bs-target="#vps" type="button" role="tab">
+      VPS Instances
+    </button>
+  </li>
+</ul>
+
+<!-- Tab content -->
+<div class="tab-content" id="cloudflyTabContent">
+  <!-- API Tokens Tab -->
+  <div class="tab-pane fade show active" id="apis" role="tabpanel">
+    <!-- Form nhập API Token mới -->
+    <div class="card mb-4">
+      <div class="card-body">
+        <h5 class="card-title">Thêm API Token mới</h5>
+        <form id="add-api-form" class="row g-3">
+          <div class="col-md-6">
+            <label class="form-label">API Token</label>
+            <input type="password" class="form-control" id="new-api-token" placeholder="Nhập API token của bạn" required>
+          </div>
+          <div class="col-md-3">
+            <label class="form-label">Tần suất cập nhật (ngày)</label>
+            <select class="form-select" id="update-frequency">
+              <option value="1">1 ngày</option>
+              <option value="3">3 ngày</option>
+              <option value="7">7 ngày</option>
+              <option value="30">30 ngày</option>
+            </select>
+          </div>
+          <div class="col-md-3 d-flex align-items-end">
+            <button type="submit" class="btn btn-primary">Thêm API Token</button>
+          </div>
+        </form>
+        <div id="add-api-result"></div>
+      </div>
+    </div>
+
+    <!-- Danh sách API Tokens đã lưu -->
+    <div class="card mb-4">
+      <div class="card-body">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+          <h5 class="card-title mb-0">Danh sách API Tokens</h5>
+          <button class="btn btn-success" id="update-all-btn">Cập nhật tất cả</button>
+        </div>
+        <div id="apis-list"></div>
+      </div>
+    </div>
+
+    <!-- Thông tin chi tiết -->
+    <div class="card mb-4">
+      <div class="card-body">
+        <h5 class="card-title">Thông tin tài khoản</h5>
+        <div id="account-details"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- VPS Tab -->
+  <div class="tab-pane fade" id="vps" role="tabpanel">
+    <div class="card mb-4">
+      <div class="card-body">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+          <h5 class="card-title mb-0">Danh sách VPS Instances</h5>
+          <button class="btn btn-success" id="update-all-vps-btn">Cập nhật tất cả VPS</button>
+        </div>
+        <div id="vps-list"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal chi tiết VPS -->
+<div class="modal fade" id="vpsDetailModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Chi tiết VPS Instance</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body" id="vps-detail-body"></div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal xác nhận xóa VPS -->
+<div class="modal fade" id="vpsDeleteModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Xác nhận xóa VPS</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <p>Bạn có chắc chắn muốn xóa VPS này khỏi hệ thống quản lý?</p>
+        <p class="text-muted">Lưu ý: Hành động này chỉ xóa VPS khỏi hệ thống quản lý, không xóa VPS thực tế trên CloudFly.</p>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Hủy</button>
+        <button type="button" class="btn btn-danger" id="confirm-delete-vps">Xóa</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal xác nhận xóa API -->
+<div class="modal fade" id="apiDeleteModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Xác nhận xóa API Token</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <p>Bạn có chắc chắn muốn xóa API Token này?</p>
+        <p class="text-muted">Tất cả VPS instances liên quan cũng sẽ bị xóa khỏi hệ thống quản lý.</p>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Hủy</button>
+        <button type="button" class="btn btn-danger" id="confirm-delete-api">Xóa</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+let currentVpsId = null;
+let currentApiId = null;
+
+// Load APIs list
+function loadApis() {
+  fetch('/api/cloudfly/apis')
+    .then(response => response.json())
+    .then(data => {
+      console.log('APIs response:', data); // Debug log
+      const apisList = document.getElementById('apis-list');
+      
+      // Check if data has apis property or is direct array
+      const apis = data.apis || data;
+      
+      if (!apis || apis.length === 0) {
+        apisList.innerHTML = '<p class="text-muted">Chưa có API Token nào được thêm.</p>';
+        return;
+      }
+      
+      let html = '<div class="table-responsive"><table class="table table-striped">';
+      html += '<thead><tr><th>Email</th><th>Số dư chính</th><th>Cập nhật lần cuối</th><th>Tần suất</th><th>Trạng thái</th><th>Thao tác</th></tr></thead><tbody>';
+      
+      apis.forEach(api => {
+        const statusBadge = api.is_active ? 
+          '<span class="badge bg-success">Hoạt động</span>' : 
+          '<span class="badge bg-secondary">Tạm dừng</span>';
+        
+        const lastUpdated = api.last_updated ? 
+          new Date(api.last_updated).toLocaleString('vi-VN') : 
+          'Chưa cập nhật';
+        
+        html += `
+          <tr>
+            <td>${api.email || 'N/A'}</td>
+            <td>$${api.balance || 0}</td>
+            <td>${lastUpdated}</td>
+            <td>${api.update_frequency || 1} ngày</td>
+            <td>${statusBadge}</td>
+            <td>
+              <button class="btn btn-sm btn-outline-danger" onclick="deleteApi(${api.id})">Xóa</button>
+            </td>
+          </tr>
+        `;
+      });
+      
+      html += '</tbody></table></div>';
+      apisList.innerHTML = html;
+    })
+    .catch(error => {
+      console.error('Error loading APIs:', error);
+      document.getElementById('apis-list').innerHTML = '<p class="text-danger">Lỗi khi tải danh sách API Tokens.</p>';
+    });
+}
+
+// Load VPS list
+function loadVps() {
+  fetch('/api/cloudfly/vps')
+    .then(response => response.json())
+    .then(data => {
+      console.log('VPS response:', data); // Debug log
+      const vpsList = document.getElementById('vps-list');
+      
+      // Check if data has vps property or is direct array
+      const vps_list = data.vps || data;
+      
+      if (!vps_list || vps_list.length === 0) {
+        vpsList.innerHTML = '<p class="text-muted">Chưa có VPS instance nào.</p>';
+        return;
+      }
+      
+      let html = '<div class="table-responsive"><table class="table table-striped">';
+      html += '<thead><tr><th>Tên hiển thị</th><th>Trạng thái</th><th>IP Address</th><th>Region</th><th>Plan</th><th>API Email</th><th>Thao tác</th></tr></thead><tbody>';
+      
+      vps_list.forEach(vps => {
+        const statusBadge = vps.status === 'running' ? 
+          '<span class="badge bg-success">Đang chạy</span>' : 
+          vps.status === 'stopped' ? 
+          '<span class="badge bg-warning">Đã dừng</span>' : 
+          '<span class="badge bg-secondary">' + (vps.status || 'N/A') + '</span>';
+        
+        // Sử dụng displayname hoặc name từ API CloudFly
+        const displayName = vps.name || vps.displayname || 'N/A';
+        
+        html += `
+          <tr>
+            <td>${displayName}</td>
+            <td>${statusBadge}</td>
+            <td>${vps.ip_address || 'N/A'}</td>
+            <td>${vps.region || 'N/A'}</td>
+            <td>${vps.flavor_type || 'N/A'}</td>
+            <td>${vps.api_email || 'N/A'}</td>
+            <td>
+              <button class="btn btn-sm btn-outline-info" onclick="showVpsDetail(${vps.id})">Chi tiết</button>
+              <button class="btn btn-sm btn-outline-danger" onclick="deleteVps(${vps.id})">Xóa</button>
+            </td>
+          </tr>
+        `;
+      });
+      
+      html += '</tbody></table></div>';
+      vpsList.innerHTML = html;
+    })
+    .catch(error => {
+      console.error('Error loading VPS:', error);
+      document.getElementById('vps-list').innerHTML = '<p class="text-danger">Lỗi khi tải danh sách VPS.</p>';
+    });
+}
+
+// Add new API
+document.getElementById('add-api-form').addEventListener('submit', function(e) {
+  e.preventDefault();
+  
+  const token = document.getElementById('new-api-token').value;
+  const frequency = document.getElementById('update-frequency').value;
+  
+  if (!token.trim()) {
+    document.getElementById('add-api-result').innerHTML = '<div class="alert alert-danger">Vui lòng nhập API Token</div>';
+    return;
+  }
+  
+  fetch('/api/cloudfly/apis', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      api_token: token,
+      update_frequency: parseInt(frequency)
+    })
+  })
+  .then(response => response.json())
+  .then(data => {
+    console.log('Add API response:', data); // Debug log
+    if (data.status === 'success') {
+      document.getElementById('add-api-result').innerHTML = '<div class="alert alert-success">Thêm API Token thành công!</div>';
+      document.getElementById('add-api-form').reset();
+      loadApis();
+    } else {
+      document.getElementById('add-api-result').innerHTML = '<div class="alert alert-danger">Lỗi: ' + (data.error || data.message || 'Unknown error') + '</div>';
+    }
+  })
+  .catch(error => {
+    console.error('Error adding API:', error);
+    document.getElementById('add-api-result').innerHTML = '<div class="alert alert-danger">Lỗi khi thêm API Token.</div>';
+  });
+});
+
+// Update all APIs
+document.getElementById('update-all-btn').addEventListener('click', function() {
+  this.disabled = true;
+  this.textContent = 'Đang cập nhật...';
+  
+  fetch('/api/cloudfly/apis/update-all', {
+    method: 'POST'
+  })
+  .then(response => response.json())
+  .then(data => {
+    console.log('Update all APIs response:', data); // Debug log
+    if (data.status === 'success') {
+      alert('Cập nhật thành công!');
+      loadApis();
+    } else {
+      alert('Lỗi: ' + (data.error || data.message || 'Unknown error'));
+    }
+  })
+  .catch(error => {
+    console.error('Error updating APIs:', error);
+    alert('Lỗi khi cập nhật API Tokens.');
+  })
+  .finally(() => {
+    this.disabled = false;
+    this.textContent = 'Cập nhật tất cả';
+  });
+});
+
+// Update all VPS
+document.getElementById('update-all-vps-btn').addEventListener('click', function() {
+  this.disabled = true;
+  this.textContent = 'Đang cập nhật...';
+  
+  fetch('/api/cloudfly/vps/update-all', {
+    method: 'POST'
+  })
+  .then(response => response.json())
+  .then(data => {
+    console.log('Update all VPS response:', data); // Debug log
+    if (data.status === 'success') {
+      alert('Cập nhật thành công!');
+      loadVps();
+    } else {
+      alert('Lỗi: ' + (data.error || data.message || 'Unknown error'));
+    }
+  })
+  .catch(error => {
+    console.error('Error updating VPS:', error);
+    alert('Lỗi khi cập nhật VPS instances.');
+  })
+  .finally(() => {
+    this.disabled = false;
+    this.textContent = 'Cập nhật tất cả VPS';
+  });
+});
+
+// Show VPS detail
+function showVpsDetail(vpsId) {
+  fetch(`/api/cloudfly/vps/${vpsId}`)
+    .then(response => response.json())
+    .then(data => {
+      console.log('VPS detail response:', data); // Debug log
+      
+      // Handle error response
+      if (data.status === 'error') {
+        alert('Lỗi: ' + data.error);
+        return;
+      }
+      
+      const modalBody = document.getElementById('vps-detail-body');
+      const displayName = data.name || data.displayname || 'N/A';
+      
+      modalBody.innerHTML = `
+        <div class="row">
+          <div class="col-md-6">
+            <h6>Thông tin cơ bản</h6>
+            <p><strong>Tên hiển thị:</strong> ${displayName}</p>
+            <p><strong>Instance ID:</strong> ${data.instance_id || 'N/A'}</p>
+            <p><strong>Trạng thái:</strong> ${data.status || 'N/A'}</p>
+            <p><strong>IP Address:</strong> ${data.ip_address || 'N/A'}</p>
+            <p><strong>IPv6 Address:</strong> ${data.ipv6_address || 'N/A'}</p>
+          </div>
+          <div class="col-md-6">
+            <h6>Thông tin kỹ thuật</h6>
+            <p><strong>Region:</strong> ${data.region || 'N/A'}</p>
+            <p><strong>Image:</strong> ${data.image_name || 'N/A'}</p>
+            <p><strong>Plan:</strong> ${data.flavor_type || 'N/A'}</p>
+            <p><strong>RAM:</strong> ${data.ram || 'N/A'} GB</p>
+            <p><strong>vCPUs:</strong> ${data.vcpus || 'N/A'}</p>
+            <p><strong>Disk:</strong> ${data.disk || 'N/A'} GB</p>
+          </div>
+        </div>
+        <div class="row mt-3">
+          <div class="col-12">
+            <h6>Tùy chọn</h6>
+            <p><strong>IPv6:</strong> ${data.enable_ipv6 ? 'Bật' : 'Tắt'}</p>
+            <p><strong>Private Network:</strong> ${data.enable_private_network ? 'Bật' : 'Tắt'}</p>
+            <p><strong>Auto Backup:</strong> ${data.auto_backup ? 'Bật' : 'Tắt'}</p>
+          </div>
+        </div>
+        <div class="row mt-3">
+          <div class="col-12">
+            <h6>Thời gian</h6>
+            <p><strong>Tạo lúc:</strong> ${data.created_at ? new Date(data.created_at).toLocaleString('vi-VN') : 'N/A'}</p>
+            <p><strong>Cập nhật lần cuối:</strong> ${data.last_updated ? new Date(data.last_updated).toLocaleString('vi-VN') : 'N/A'}</p>
+          </div>
+        </div>
+      `;
+      
+      const modal = new bootstrap.Modal(document.getElementById('vpsDetailModal'));
+      modal.show();
+    })
+    .catch(error => {
+      console.error('Error loading VPS detail:', error);
+      alert('Lỗi khi tải thông tin chi tiết VPS.');
+    });
+}
+
+// Delete VPS
+function deleteVps(vpsId) {
+  currentVpsId = vpsId;
+  const modal = new bootstrap.Modal(document.getElementById('vpsDeleteModal'));
+  modal.show();
+}
+
+// Delete API
+function deleteApi(apiId) {
+  currentApiId = apiId;
+  const modal = new bootstrap.Modal(document.getElementById('apiDeleteModal'));
+  modal.show();
+}
+
+// Confirm delete VPS
+document.getElementById('confirm-delete-vps').addEventListener('click', function() {
+  if (!currentVpsId) return;
+  
+  fetch(`/api/cloudfly/vps/${currentVpsId}`, {
+    method: 'DELETE'
+  })
+  .then(response => response.json())
+  .then(data => {
+    console.log('Delete VPS response:', data); // Debug log
+    if (data.status === 'success') {
+      bootstrap.Modal.getInstance(document.getElementById('vpsDeleteModal')).hide();
+      loadVps();
+      alert('Xóa VPS thành công!');
+    } else {
+      alert('Lỗi: ' + (data.error || data.message || 'Unknown error'));
+    }
+  })
+  .catch(error => {
+    console.error('Error deleting VPS:', error);
+    alert('Lỗi khi xóa VPS.');
+  });
+});
+
+// Confirm delete API
+document.getElementById('confirm-delete-api').addEventListener('click', function() {
+  if (!currentApiId) return;
+  
+  fetch(`/api/cloudfly/apis/${currentApiId}`, {
+    method: 'DELETE'
+  })
+  .then(response => response.json())
+  .then(data => {
+    console.log('Delete API response:', data); // Debug log
+    if (data.status === 'success') {
+      bootstrap.Modal.getInstance(document.getElementById('apiDeleteModal')).hide();
+      loadApis();
+      loadVps();
+      alert('Xóa API Token thành công!');
+    } else {
+      alert('Lỗi: ' + (data.error || data.message || 'Unknown error'));
+    }
+  })
+  .catch(error => {
+    console.error('Error deleting API:', error);
+    alert('Lỗi khi xóa API Token.');
+  });
+});
+
+// Load data when page loads
+document.addEventListener('DOMContentLoaded', function() {
+  loadApis();
+  loadVps();
+});
+
+// Load data when switching tabs
+document.querySelectorAll('[data-bs-toggle="tab"]').forEach(tab => {
+  tab.addEventListener('shown.bs.tab', function(e) {
+    if (e.target.id === 'vps-tab') {
+      loadVps();
+    } else if (e.target.id === 'apis-tab') {
+      loadApis();
+    }
+  });
+});
+</script>
+{% endblock %} 

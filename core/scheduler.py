@@ -223,10 +223,16 @@ def start_scheduler():
                     
                     # Cập nhật thông tin tài khoản
                     user_info = client.get_user_info()
-                    balance = user_info.get('balance', 0)
-                    account_limit = user_info.get('account_limit', 0)
-                    manager.update_cloudfly_info(api.id, balance, account_limit)
-                    logger.info(f"[Scheduler] Updated balance for API {api.id}: ${balance}")
+                    
+                    # CloudFly API có structure phức tạp: clients[0].wallet.main_balance
+                    main_balance = 0
+                    if 'clients' in user_info and len(user_info['clients']) > 0:
+                        wallet = user_info['clients'][0].get('wallet', {})
+                        main_balance = wallet.get('main_balance', 0)
+                    
+                    # CloudFly API không có account_limit
+                    manager.update_cloudfly_info(api.id, main_balance, 0)
+                    logger.info(f"[Scheduler] Updated balance for API {api.id}: ${main_balance}")
                     
                     updated_count += 1
                 except CloudFlyAPIError as e:

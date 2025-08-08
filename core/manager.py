@@ -484,11 +484,37 @@ def add_cloudfly_vps(api_id: int, instance_data: dict) -> CloudFlyVPS:
         instance_id=instance_data.get('id')
     ).first()
     
+    # Extract dữ liệu từ CloudFly API response structure
+    display_name = instance_data.get('display_name', '')
+    ip_address = instance_data.get('accessIPv4', '')
+    
+    # Convert status từ CloudFly format (ACTIVE) sang format thông thường (running)
+    status = instance_data.get('status', '').lower()
+    if status == 'active':
+        status = 'running'
+    elif status == 'shutoff':
+        status = 'stopped'
+    
+    # Extract region từ nested object
+    region_info = instance_data.get('region', {})
+    region = region_info.get('description', '') if isinstance(region_info, dict) else str(region_info)
+    
+    # Extract flavor từ nested object
+    flavor_info = instance_data.get('flavor', {})
+    flavor_type = flavor_info.get('description', '') if isinstance(flavor_info, dict) else str(flavor_info)
+    
+    # Extract image từ nested object
+    image_info = instance_data.get('image', {})
+    image_name = image_info.get('name', '') if isinstance(image_info, dict) else str(image_info)
+    
     if existing_vps:
         # Cập nhật thông tin nếu đã tồn tại
-        for key, value in instance_data.items():
-            if hasattr(existing_vps, key):
-                setattr(existing_vps, key, value)
+        existing_vps.name = display_name
+        existing_vps.status = status
+        existing_vps.ip_address = ip_address
+        existing_vps.region = region
+        existing_vps.image_name = image_name
+        existing_vps.flavor_type = flavor_type
         existing_vps.last_updated = datetime.utcnow()
         db.session.commit()
         return existing_vps
@@ -497,20 +523,13 @@ def add_cloudfly_vps(api_id: int, instance_data: dict) -> CloudFlyVPS:
     vps = CloudFlyVPS(
         api_id=api_id,
         instance_id=instance_data.get('id'),
-        name=instance_data.get('name'),
-        status=instance_data.get('status'),
-        ip_address=instance_data.get('ip_address'),
-        ipv6_address=instance_data.get('ipv6_address'),
-        region=instance_data.get('region'),
-        image_name=instance_data.get('image_name'),
-        flavor_type=instance_data.get('flavor_type'),
-        ram=instance_data.get('ram'),
-        vcpus=instance_data.get('vcpus'),
-        disk=instance_data.get('disk'),
-        enable_ipv6=instance_data.get('enable_ipv6'),
-        enable_private_network=instance_data.get('enable_private_network'),
-        auto_backup=instance_data.get('auto_backup'),
-        created_at=instance_data.get('created_at'),
+        name=display_name,
+        status=status,
+        ip_address=ip_address,
+        region=region,
+        image_name=image_name,
+        flavor_type=flavor_type,
+        created_at=datetime.utcnow(),
         last_updated=datetime.utcnow()
     )
     
