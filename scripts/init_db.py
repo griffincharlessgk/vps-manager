@@ -28,8 +28,10 @@ def init_database():
         try:
             # Create all tables
             logger.info("Creating database tables...")
+            print("🗄️  Tạo tất cả bảng database...")
             db.create_all()
             logger.info("Database tables created successfully")
+            print("✅ Đã tạo tất cả bảng thành công!")
             
             # Check if admin user exists
             admin_user = User.query.filter_by(username='admin').first()
@@ -41,13 +43,16 @@ def init_database():
                     notify_days=3,
                     notify_hour=8
                 )
-                admin_user.set_password('admin123')  # Change this in production!
+                admin_user.set_password('123')  # Simple password for development
                 db.session.add(admin_user)
                 db.session.commit()
                 logger.info("Admin user created successfully")
-                logger.warning("Default admin password is 'admin123' ")
+                print("✅ Đã tạo admin user thành công!")
+                print("   Username: admin")
+                print("   Password: 123")
             else:
                 logger.info("Admin user already exists")
+                print("ℹ️  Admin user đã tồn tại")
             
             # Create logs directory
             log_dir = Path(__file__).parent.parent / 'logs'
@@ -55,6 +60,8 @@ def init_database():
             logger.info(f"Logs directory created: {log_dir}")
             
             logger.info("Database initialization completed successfully")
+            print("\n🎉 Khởi tạo database hoàn tất!")
+            print("🚀 Chạy 'python run_app.py' để khởi động ứng dụng")
             
         except Exception as e:
             logger.error(f"Error initializing database: {e}")
