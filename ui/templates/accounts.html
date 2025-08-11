@@ -228,7 +228,87 @@ function loadAccounts() {
     accData = data;
     currentPageAcc = 1;
     renderAccTable();
+    displayExpiryWarnings(); // Hiển thị cảnh báo hết hạn
   });
+}
+
+// Hàm hiển thị tài khoản đã hết hạn và sắp hết hạn
+function displayExpiryWarnings() {
+  const today = new Date();
+  const expiredAccounts = [];
+  const expiringAccounts = [];
+  
+  accData.forEach(acc => {
+    if (acc.expiry && acc.source === 'manual') {
+      try {
+        const expiryDate = new Date(acc.expiry);
+        const daysLeft = Math.ceil((expiryDate - today) / (1000 * 60 * 60 * 24));
+        
+        if (daysLeft < 0) {
+          // Tài khoản đã hết hạn
+          expiredAccounts.push({...acc, daysLeft: Math.abs(daysLeft)});
+        } else if (daysLeft <= 7) {
+          // Tài khoản sắp hết hạn
+          expiringAccounts.push({...acc, daysLeft: daysLeft});
+        }
+      } catch (e) {
+        console.error('Error parsing expiry date:', e);
+      }
+    }
+  });
+  
+  // Hiển thị tài khoản đã hết hạn
+  const expiredContainer = document.getElementById('expired-accounts-list');
+  if (expiredAccounts.length > 0) {
+    let html = '<div class="table-responsive"><table class="table table-sm">';
+    html += '<thead><tr><th>Tên tài khoản</th><th>Dịch vụ</th><th>Ngày hết hạn</th><th>Trạng thái</th></tr></thead><tbody>';
+    
+    expiredAccounts.forEach(acc => {
+      html += `<tr class="table-danger">
+        <td><strong>${acc.username || acc.id}</strong></td>
+        <td>${acc.service || 'N/A'}</td>
+        <td>${acc.expiry}</td>
+        <td><span class="badge bg-danger">🚨 Đã hết hạn ${acc.daysLeft} ngày</span></td>
+      </tr>`;
+    });
+    
+    html += '</tbody></table></div>';
+    expiredContainer.innerHTML = html;
+  } else {
+    expiredContainer.innerHTML = '<div class="alert alert-success">✅ Không có tài khoản nào đã hết hạn!</div>';
+  }
+  
+  // Hiển thị tài khoản sắp hết hạn
+  const expiringContainer = document.getElementById('expiring-accounts-list');
+  if (expiringAccounts.length > 0) {
+    let html = '<div class="table-responsive"><table class="table table-sm">';
+    html += '<thead><tr><th>Tên tài khoản</th><th>Dịch vụ</th><th>Ngày hết hạn</th><th>Trạng thái</th></tr></thead><tbody>';
+    
+    expiringAccounts.forEach(acc => {
+      let badgeClass = 'bg-warning';
+      let statusText = `Còn ${acc.daysLeft} ngày`;
+      
+      if (acc.daysLeft === 0) {
+        badgeClass = 'bg-danger';
+        statusText = '🚨 HẾT HẠN HÔM NAY!';
+      } else if (acc.daysLeft === 1) {
+        badgeClass = 'bg-warning';
+        statusText = '⚠️ Hết hạn ngày mai';
+      }
+      
+      html += `<tr class="table-warning">
+        <td><strong>${acc.username || acc.id}</strong></td>
+        <td>${acc.service || 'N/A'}</td>
+        <td>${acc.expiry}</td>
+        <td><span class="badge ${badgeClass}">${statusText}</span></td>
+      </tr>`;
+    });
+    
+    html += '</tbody></table></div>';
+    expiringContainer.innerHTML = html;
+  } else {
+    expiringContainer.innerHTML = '<div class="alert alert-success">✅ Không có tài khoản nào sắp hết hạn!</div>';
+  }
 }
 
 document.getElementById('search-acc').oninput = function(){ currentPageAcc=1; renderAccTable(); };
