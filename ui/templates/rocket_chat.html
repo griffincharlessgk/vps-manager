@@ -1,0 +1,502 @@
+{% extends 'base.html' %}
+{% block content %}
+<h2 class="mb-4">Cấu hình Rocket Chat</h2>
+
+<div class="row">
+  <div class="col-md-6">
+    <div class="card mb-4">
+      <div class="card-header">
+        <h5 class="card-title mb-0">Cấu hình thông báo</h5>
+      </div>
+      <div class="card-body">
+        <form id="rocket-chat-config-form">
+          <div class="mb-3">
+            <label class="form-label">Auth Token</label>
+            <input type="password" class="form-control" id="auth-token" placeholder="Nhập Auth Token từ Rocket Chat" required>
+            <div class="form-text">Lấy từ Rocket Chat: Settings → My Account → Personal Access Tokens</div>
+          </div>
+          
+          <div class="mb-3">
+            <label class="form-label">User ID</label>
+            <input type="text" class="form-control" id="user-id-rocket" placeholder="Nhập User ID từ Rocket Chat" required>
+            <div class="form-text">Lấy từ Rocket Chat: Settings → My Account → Profile</div>
+          </div>
+          
+          <div class="mb-3">
+            <label class="form-label">Room ID</label>
+            <input type="text" class="form-control" id="room-id" placeholder="Nhập Room ID" required>
+            <div class="form-text">ID của channel/group muốn gửi thông báo</div>
+          </div>
+          
+          <div class="mb-3">
+            <label class="form-label">Room Name (tùy chọn)</label>
+            <input type="text" class="form-control" id="room-name" placeholder="Tên room để hiển thị">
+          </div>
+          
+          <div class="d-flex gap-2">
+            <button type="submit" class="btn btn-primary">Lưu cấu hình</button>
+            <button type="button" class="btn btn-info" id="load-channels-btn">Tải danh sách Channels</button>
+          </div>
+        </form>
+        
+        <div id="config-result" class="mt-3"></div>
+      </div>
+    </div>
+  </div>
+  
+  <div class="col-md-6">
+    <div class="card mb-4">
+      <div class="card-header">
+        <h5 class="card-title mb-0">Test kết nối</h5>
+      </div>
+      <div class="card-body">
+        <form id="test-connection-form">
+          <div class="mb-3">
+            <label class="form-label">Auth Token (test)</label>
+            <input type="password" class="form-control" id="test-auth-token" placeholder="Nhập Auth Token để test">
+          </div>
+          
+          <div class="mb-3">
+            <label class="form-label">User ID (test)</label>
+            <input type="text" class="form-control" id="test-user-id" placeholder="Nhập User ID để test">
+          </div>
+          
+          <div class="mb-3">
+            <label class="form-label">Room ID (test)</label>
+            <input type="text" class="form-control" id="test-room-id" placeholder="Nhập Room ID để test">
+          </div>
+          
+          <button type="submit" class="btn btn-success">Test kết nối</button>
+        </form>
+        
+        <div id="test-result" class="mt-3"></div>
+      </div>
+    </div>
+    
+ 
+    
+    <div class="card mt-4">
+      <div class="card-header">
+        <h5 class="card-title mb-0">Gửi thông báo tùy chỉnh</h5>
+      </div>
+      <div class="card-body">
+        <form id="send-notification-form">
+          <div class="mb-3">
+            <label class="form-label">Tiêu đề</label>
+            <input type="text" class="form-control" id="notification-title" placeholder="Nhập tiêu đề thông báo" required>
+          </div>
+          
+          <div class="mb-3">
+            <label class="form-label">Nội dung</label>
+            <textarea class="form-control" id="notification-text" rows="3" placeholder="Nhập nội dung thông báo" required></textarea>
+          </div>
+          
+          <div class="mb-3">
+            <label class="form-label">Màu sắc</label>
+            <select class="form-select" id="notification-color">
+              <option value="good">Xanh lá (Thành công)</option>
+              <option value="warning">Vàng (Cảnh báo)</option>
+              <option value="danger">Đỏ (Lỗi)</option>
+              <option value="info">Xanh dương (Thông tin)</option>
+            </select>
+          </div>
+          
+          <button type="submit" class="btn btn-primary">Gửi thông báo</button>
+        </form>
+        
+        <div id="notification-result" class="mt-3"></div>
+      </div>
+    </div>
+    
+    <div class="card mt-4">
+      <div class="card-header">
+        <h5 class="card-title mb-0">Thông báo tài khoản</h5>
+      </div>
+      <div class="card-body">
+        <form id="account-notification-form">
+          <div class="mb-3">
+            <label class="form-label">Số ngày cảnh báo trước</label>
+            <select class="form-select" id="warning-days">
+              <option value="1">1 ngày</option>
+              <option value="3">3 ngày</option>
+              <option value="7" selected>7 ngày</option>
+              <option value="14">14 ngày</option>
+              <option value="30">30 ngày</option>
+            </select>
+            <div class="form-text">Gửi thông báo cho tài khoản sắp hết hạn trong số ngày này</div>
+          </div>
+          
+          <div class="d-flex gap-2">
+            <button type="submit" class="btn btn-info">Gửi thông báo tài khoản sắp hết hạn</button>
+            <button type="button" class="btn btn-success" id="send-daily-summary-btn">Gửi báo cáo tổng hợp hàng ngày</button>
+          </div>
+        </form>
+        
+        <div id="account-notification-result" class="mt-3"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal hiển thị danh sách channels -->
+<div class="modal fade" id="channelsModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Danh sách Channels & Groups</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <ul class="nav nav-tabs" id="channelsTabs" role="tablist">
+          <li class="nav-item" role="presentation">
+            <button class="nav-link active" id="channels-tab" data-bs-toggle="tab" data-bs-target="#channels" type="button" role="tab">
+              Channels
+            </button>
+          </li>
+          <li class="nav-item" role="presentation">
+            <button class="nav-link" id="groups-tab" data-bs-toggle="tab" data-bs-target="#groups" type="button" role="tab">
+              Groups
+            </button>
+          </li>
+        </ul>
+        
+        <div class="tab-content mt-3" id="channelsTabContent">
+          <div class="tab-pane fade show active" id="channels" role="tabpanel">
+            <div id="channels-list"></div>
+          </div>
+          <div class="tab-pane fade" id="groups" role="tabpanel">
+            <div id="groups-list"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// Load config khi trang load
+document.addEventListener('DOMContentLoaded', function() {
+  loadConfig();
+});
+
+function loadConfig() {
+  console.log('🔄 Loading Rocket Chat config...');
+  fetch('/api/rocket-chat/config')
+    .then(response => response.json())
+    .then(data => {
+      console.log('📡 API Response:', data);
+      
+      if (data.status === 'not_found') {
+        console.log('❌ Chưa có cấu hình Rocket Chat');
+        return;
+      }
+      
+      if (data.id) {
+        console.log('✅ Có config, điền vào form');
+        console.log('   Auth Token:', data.auth_token ? data.auth_token.substring(0, 20) + '...' : 'N/A');
+        console.log('   User ID Rocket:', data.user_id_rocket || 'N/A');
+        console.log('   Room ID:', data.room_id || 'N/A');
+        console.log('   Room Name:', data.room_name || 'N/A');
+        
+        // Có config, điền vào form
+        document.getElementById('auth-token').value = data.auth_token || '';
+        document.getElementById('user-id-rocket').value = data.user_id_rocket || '';
+        document.getElementById('room-id').value = data.room_id || '';
+        document.getElementById('room-name').value = data.room_name || '';
+        
+        // Hiển thị thông tin cấu hình hiện tại
+        const configInfo = `
+          <div class="alert alert-info mt-3">
+            <h6>📋 Cấu hình hiện tại:</h6>
+            <ul class="mb-0">
+              <li><strong>Auth Token:</strong> ${data.auth_token ? data.auth_token.substring(0, 20) + '...' : 'Chưa cấu hình'}</li>
+              <li><strong>User ID Rocket:</strong> ${data.user_id_rocket || 'Chưa cấu hình'}</li>
+              <li><strong>Room ID:</strong> ${data.room_id || 'Chưa cấu hình'}</li>
+              <li><strong>Room Name:</strong> ${data.room_name || 'Chưa cấu hình'}</li>
+            </ul>
+          </div>
+        `;
+        document.getElementById('config-result').innerHTML = configInfo;
+      }
+    })
+    .catch(error => {
+      console.error('❌ Error loading config:', error);
+    });
+}
+
+// Form cấu hình
+const rocketChatConfigForm = document.getElementById('rocket-chat-config-form');
+if (rocketChatConfigForm) {
+  rocketChatConfigForm.addEventListener('submit', function(e) {
+    e.preventDefault();
+    
+    const authToken = document.getElementById('auth-token').value;
+    const userIdRocket = document.getElementById('user-id-rocket').value;
+    const roomId = document.getElementById('room-id').value;
+    const roomName = document.getElementById('room-name').value;
+    
+    fetch('/api/rocket-chat/config', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        auth_token: authToken,
+        user_id_rocket: userIdRocket,
+        room_id: roomId,
+        room_name: roomName
+      })
+    })
+    .then(response => response.json())
+    .then(data => {
+      const resultDiv = document.getElementById('config-result');
+      if (data.status === 'success') {
+        resultDiv.innerHTML = '<div class="alert alert-success">' + data.message + '</div>';
+      } else {
+        resultDiv.innerHTML = '<div class="alert alert-danger">Lỗi: ' + data.error + '</div>';
+      }
+    })
+    .catch(error => {
+      console.error('Error saving config:', error);
+      document.getElementById('config-result').innerHTML = '<div class="alert alert-danger">Lỗi khi lưu cấu hình</div>';
+    });
+  });
+}
+
+// Load channels
+const loadChannelsBtn = document.getElementById('load-channels-btn');
+if (loadChannelsBtn) {
+  loadChannelsBtn.addEventListener('click', function() {
+    const authToken = document.getElementById('auth-token').value;
+    const userIdRocket = document.getElementById('user-id-rocket').value;
+    
+    if (!authToken || !userIdRocket) {
+      alert('Vui lòng nhập Auth Token và User ID trước');
+      return;
+    }
+    
+    const params = new URLSearchParams({
+      auth_token: authToken,
+      user_id_rocket: userIdRocket
+    });
+    
+    fetch('/api/rocket-chat/channels?' + params)
+      .then(response => response.json())
+      .then(data => {
+        if (data.status === 'success') {
+          displayChannels(data.channels, data.groups);
+        } else {
+          alert('Lỗi: ' + data.error);
+        }
+      })
+      .catch(error => {
+        console.error('Error loading channels:', error);
+        alert('Lỗi khi tải danh sách channels');
+      });
+  });
+}
+
+function displayChannels(channels, groups) {
+  // Hiển thị channels
+  let channelsHtml = '<div class="list-group">';
+  channels.forEach(channel => {
+    channelsHtml += `
+      <div class="list-group-item">
+        <div class="d-flex justify-content-between align-items-center">
+          <div>
+            <strong>${channel.name}</strong>
+            <br><small class="text-muted">ID: ${channel._id}</small>
+          </div>
+          <button class="btn btn-sm btn-outline-primary" onclick="selectRoom('${channel._id}', '${channel.name}')">
+            Chọn
+          </button>
+        </div>
+      </div>
+    `;
+  });
+  channelsHtml += '</div>';
+  document.getElementById('channels-list').innerHTML = channelsHtml;
+  
+  // Hiển thị groups
+  let groupsHtml = '<div class="list-group">';
+  groups.forEach(group => {
+    groupsHtml += `
+      <div class="list-group-item">
+        <div class="d-flex justify-content-between align-items-center">
+          <div>
+            <strong>${group.name}</strong>
+            <br><small class="text-muted">ID: ${group._id}</small>
+          </div>
+          <button class="btn btn-sm btn-outline-primary" onclick="selectRoom('${group._id}', '${group.name}')">
+            Chọn
+          </button>
+        </div>
+      </div>
+    `;
+  });
+  groupsHtml += '</div>';
+  document.getElementById('groups-list').innerHTML = groupsHtml;
+  
+  // Hiển thị modal
+  const modal = new bootstrap.Modal(document.getElementById('channelsModal'));
+  modal.show();
+}
+
+function selectRoom(roomId, roomName) {
+  document.getElementById('room-id').value = roomId;
+  document.getElementById('room-name').value = roomName;
+  
+  // Đóng modal
+  const modal = bootstrap.Modal.getInstance(document.getElementById('channelsModal'));
+  modal.hide();
+}
+
+// Test connection
+const testConnectionForm = document.getElementById('test-connection-form');
+if (testConnectionForm) {
+  testConnectionForm.addEventListener('submit', function(e) {
+    e.preventDefault();
+    
+    const authToken = document.getElementById('test-auth-token').value;
+    const userId = document.getElementById('test-user-id').value;
+    const roomId = document.getElementById('test-room-id').value;
+    
+    fetch('/api/rocket-chat/test', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        auth_token: authToken,
+        user_id_rocket: userId,
+        room_id: roomId
+      })
+    })
+    .then(response => response.json())
+    .then(data => {
+      const resultDiv = document.getElementById('test-result');
+      if (data.status === 'success') {
+        resultDiv.innerHTML = '<div class="alert alert-success">' + data.message + '</div>';
+      } else {
+        resultDiv.innerHTML = '<div class="alert alert-danger">Lỗi: ' + data.error + '</div>';
+      }
+    })
+    .catch(error => {
+      console.error('Error testing connection:', error);
+      document.getElementById('test-result').innerHTML = '<div class="alert alert-danger">Lỗi khi test kết nối</div>';
+    });
+  });
+}
+
+// Send notification
+const sendNotificationForm = document.getElementById('send-notification-form');
+if (sendNotificationForm) {
+  sendNotificationForm.addEventListener('submit', function(e) {
+    e.preventDefault();
+    
+    const title = document.getElementById('notification-title').value;
+    const text = document.getElementById('notification-text').value;
+    const color = document.getElementById('notification-color').value;
+    
+    fetch('/api/rocket-chat/send-notification', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        title: title,
+        text: text,
+        color: color
+      })
+    })
+    .then(response => response.json())
+    .then(data => {
+      const resultDiv = document.getElementById('notification-result');
+      if (data.status === 'success') {
+        resultDiv.innerHTML = '<div class="alert alert-success">' + data.message + '</div>';
+      } else {
+        resultDiv.innerHTML = '<div class="alert alert-danger">Lỗi: ' + data.error + '</div>';
+      }
+    })
+    .catch(error => {
+      console.error('Error sending notification:', error);
+      document.getElementById('notification-result').innerHTML = '<div class="alert alert-danger">Lỗi khi gửi thông báo</div>';
+    });
+  });
+}
+
+// Send account notification
+const accountNotificationForm = document.getElementById('account-notification-form');
+if (accountNotificationForm) {
+  accountNotificationForm.addEventListener('submit', function(e) {
+    e.preventDefault();
+    
+    const warningDays = parseInt(document.getElementById('warning-days').value);
+    console.log('🔄 Sending account notification, warning_days:', warningDays);
+    
+    fetch('/api/rocket-chat/send-account-notification', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        warning_days: warningDays
+      })
+    })
+    .then(response => {
+      console.log('📡 Response status:', response.status);
+      return response.json();
+    })
+    .then(data => {
+      console.log('📡 Response data:', data);
+      const resultDiv = document.getElementById('account-notification-result');
+      if (data.status === 'success') {
+        resultDiv.innerHTML = '<div class="alert alert-success">' + data.message + '</div>';
+        console.log('✅ Account notification sent successfully');
+      } else {
+        resultDiv.innerHTML = '<div class="alert alert-danger">Lỗi: ' + data.error + '</div>';
+        console.log('❌ Account notification failed:', data.error);
+      }
+    })
+    .catch(error => {
+      console.error('❌ Error sending account notification:', error);
+      document.getElementById('account-notification-result').innerHTML = '<div class="alert alert-danger">Lỗi khi gửi thông báo tài khoản</div>';
+    });
+  });
+}
+
+// Send daily summary
+const sendDailySummaryBtn = document.getElementById('send-daily-summary-btn');
+if (sendDailySummaryBtn) {
+  sendDailySummaryBtn.addEventListener('click', function() {
+    console.log('🔄 Sending daily summary...');
+    
+    fetch('/api/rocket-chat/send-daily-summary', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      }
+    })
+    .then(response => {
+      console.log('📡 Response status:', response.status);
+      return response.json();
+    })
+    .then(data => {
+      console.log('📡 Response data:', data);
+      const resultDiv = document.getElementById('account-notification-result');
+      if (data.status === 'success') {
+        resultDiv.innerHTML = '<div class="alert alert-success">' + data.message + '</div>';
+        console.log('✅ Daily summary sent successfully');
+      } else {
+        resultDiv.innerHTML = '<div class="alert alert-danger">Lỗi: ' + data.error + '</div>';
+        console.log('❌ Daily summary failed:', data.error);
+      }
+    })
+    .catch(error => {
+      console.error('❌ Error sending daily summary:', error);
+      document.getElementById('account-notification-result').innerHTML = '<div class="alert alert-danger">Lỗi khi gửi báo cáo hàng ngày</div>';
+    });
+  });
+}
+</script>
+{% endblock %} 

@@ -1,71 +1,77 @@
 #!/usr/bin/env python3
 """
-Database initialization script
-Creates tables and initial admin user
+Script khởi tạo database cho VPS Manager
+Tạo tất cả bảng và seed dữ liệu admin
 """
 
 import os
 import sys
-from pathlib import Path
 
-# Add the parent directory to the path
-sys.path.append(str(Path(__file__).parent.parent))
+# Thêm thư mục gốc vào Python path
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from ui.app import create_app
-from core.models import db, User
-from core.logging_config import setup_logging
-import logging
+from core.models import db, User, VPS, Account, BitLaunchAPI, BitLaunchVPS, ZingProxyAccount, ZingProxy, Proxy, CloudFlyAPI, CloudFlyVPS, RocketChatConfig
 
 def init_database():
-    """Initialize database and create admin user"""
+    """Khởi tạo database và tạo admin user"""
+    print("🚀 Khởi tạo database VPS Manager...")
+    
+    # Tạo app context
     app = create_app()
     
     with app.app_context():
-        # Setup logging
-        setup_logging(app)
-        logger = logging.getLogger(__name__)
-        
         try:
-            # Create all tables
-            logger.info("Creating database tables...")
-            print("🗄️  Tạo tất cả bảng database...")
+            # Tạo tất cả bảng
+            print("📋 Tạo các bảng database...")
             db.create_all()
-            logger.info("Database tables created successfully")
             print("✅ Đã tạo tất cả bảng thành công!")
             
-            # Check if admin user exists
+            # Kiểm tra xem đã có admin user chưa
             admin_user = User.query.filter_by(username='admin').first()
-            if not admin_user:
-                logger.info("Creating admin user...")
-                admin_user = User(
-                    username='admin',
-                    role='admin',
-                    notify_days=3,
-                    notify_hour=8
-                )
-                admin_user.set_password('123')  # Simple password for development
-                db.session.add(admin_user)
+            if admin_user:
+                print("👤 Admin user đã tồn tại")
+            else:
+                # Tạo admin user
+                print("👤 Tạo admin user...")
+                admin = User(username='admin', role='admin')
+                admin.set_password('123')  # Mật khẩu mặc định: 123
+                db.session.add(admin)
                 db.session.commit()
-                logger.info("Admin user created successfully")
                 print("✅ Đã tạo admin user thành công!")
                 print("   Username: admin")
                 print("   Password: 123")
-            else:
-                logger.info("Admin user already exists")
-                print("ℹ️  Admin user đã tồn tại")
+                print("   ⚠️  Vui lòng đổi mật khẩu sau khi đăng nhập!")
             
-            # Create logs directory
-            log_dir = Path(__file__).parent.parent / 'logs'
-            log_dir.mkdir(exist_ok=True)
-            logger.info(f"Logs directory created: {log_dir}")
+            # Kiểm tra các bảng đã được tạo
+            tables = [
+                'users', 'vps', 'accounts', 'bitlaunch_apis', 'bitlaunch_vps',
+                'zingproxy_accounts', 'zingproxies', 'proxies', 
+                'cloudfly_apis', 'cloudfly_vps', 'rocket_chat_configs'
+            ]
             
-            logger.info("Database initialization completed successfully")
+            print("\n📊 Kiểm tra các bảng đã tạo:")
+            for table in tables:
+                try:
+                    # Thử query để kiểm tra bảng có tồn tại không
+                    db.session.execute(f"SELECT COUNT(*) FROM {table}")
+                    print(f"   ✅ {table}")
+                except Exception as e:
+                    print(f"   ❌ {table} - Lỗi: {e}")
+            
             print("\n🎉 Khởi tạo database hoàn tất!")
-            print("🚀 Chạy 'python run_app.py' để khởi động ứng dụng")
+            print("🌐 Bạn có thể chạy ứng dụng bằng lệnh: python -m ui.app")
             
         except Exception as e:
-            logger.error(f"Error initializing database: {e}")
-            raise
+            print(f"❌ Lỗi khởi tạo database: {e}")
+            return False
+    
+    return True
 
 if __name__ == '__main__':
-    init_database() 
+    success = init_database()
+    if success:
+        print("\n✅ Database đã sẵn sàng!")
+    else:
+        print("\n❌ Có lỗi xảy ra khi khởi tạo database!")
+        sys.exit(1) 

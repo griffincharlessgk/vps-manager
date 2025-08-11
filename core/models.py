@@ -256,3 +256,30 @@ class CloudFlyVPS(db.Model):
     auto_backup = db.Column(db.Boolean, nullable=True)  # Auto backup enabled
     created_at = db.Column(db.DateTime, nullable=True)
     last_updated = db.Column(db.DateTime, nullable=True) 
+
+class RocketChatConfig(db.Model):
+    """Cấu hình Rocket Chat cho từng user"""
+    __tablename__ = 'rocket_chat_configs'
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+    auth_token = db.Column(db.String(512), nullable=False)  # Auth token lưu trực tiếp
+    user_id_rocket = db.Column(db.String(128), nullable=False)  # User ID trong Rocket Chat
+    room_id = db.Column(db.String(128), nullable=False)  # Room ID để gửi thông báo
+    room_name = db.Column(db.String(128), nullable=True)  # Tên room để hiển thị
+    is_active = db.Column(db.Boolean, nullable=False, default=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    @staticmethod
+    def validate_room_id(room_id):
+        """Validate room ID format"""
+        if not room_id or len(room_id) < 10:
+            return False
+        return True
+
+    @staticmethod
+    def validate_user_id_rocket(user_id):
+        """Validate Rocket Chat user ID format"""
+        if not user_id or len(user_id) < 5:
+            return False
+        return True 

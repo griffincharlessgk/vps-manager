@@ -1,6 +1,5 @@
 from typing import Dict, List, Optional, Any
-from core.models import db, VPS, Account, BitLaunchAPI, BitLaunchVPS, ZingProxyAccount, ZingProxy, User, Proxy, CloudFlyAPI, CloudFlyVPS
-from core.encryption import encrypt_sensitive_data, decrypt_sensitive_data
+from core.models import db, VPS, Account, BitLaunchAPI, BitLaunchVPS, ZingProxyAccount, ZingProxy, User, Proxy, CloudFlyAPI, CloudFlyVPS, RocketChatConfig
 from core.api_clients.bitlaunch import BitLaunchClient, BitLaunchAPIError
 from core.api_clients.zingproxy import ZingProxyClient, ZingProxyAPIError
 from core.api_clients.cloudfly import CloudFlyClient, CloudFlyAPIError
@@ -789,3 +788,83 @@ def import_proxies_from_zingproxy(user_id: int, zingproxy_data: List[dict]) -> i
         return 0
     
     return imported_count + updated_count 
+
+def rocket_chat_config_to_dict(config: RocketChatConfig) -> dict:
+    """Convert RocketChatConfig object to dictionary"""
+    return {
+        'id': config.id,
+        'user_id': config.user_id,
+        'auth_token': config.auth_token,  # Thêm auth_token vào response
+        'user_id_rocket': config.user_id_rocket,
+        'room_id': config.room_id,
+        'room_name': config.room_name,
+        'is_active': config.is_active,
+        'created_at': config.created_at.isoformat() if config.created_at else None,
+        'updated_at': config.updated_at.isoformat() if config.updated_at else None
+    }
+
+def add_rocket_chat_config(user_id: int, auth_token: str, user_id_rocket: str, room_id: str, room_name: str = None) -> RocketChatConfig:
+    """Thêm cấu hình Rocket Chat cho user"""
+    # Kiểm tra xem user đã có config chưa
+    existing = RocketChatConfig.query.filter_by(user_id=user_id).first()
+    if existing:
+        raise ValueError(f"User {user_id} đã có cấu hình Rocket Chat")
+    
+    # Validate dữ liệu
+    if not RocketChatConfig.validate_user_id_rocket(user_id_rocket):
+        raise ValueError("User ID Rocket Chat không hợp lệ")
+    
+    if not RocketChatConfig.validate_room_id(room_id):
+        raise ValueError("Room ID không hợp lệ")
+    
+    # Tạo config mới
+    config = RocketChatConfig(
+        user_id=user_id,
+        auth_token=auth_token,  # Lưu trực tiếp
+        user_id_rocket=user_id_rocket,
+        room_id=room_id,
+        room_name=room_name
+    )
+    
+    db.session.add(config)
+    db.session.commit()
+    return config
+
+def update_rocket_chat_config(config_id: int, auth_token: str = None, user_id_rocket: str = None, room_id: str = None, room_name: str = None) -> RocketChatConfig:
+    """Cập nhật cấu hình Rocket Chat"""
+    config = RocketChatConfig.query.get(config_id)
+    if not config:
+        raise ValueError(f"Không tìm thấy cấu hình Rocket Chat với ID {config_id}")
+    
+    if auth_token is not None:
+        config.auth_token = auth_token  # Lưu trực tiếp
+    if user_id_rocket is not None:
+        if not RocketChatConfig.validate_user_id_rocket(user_id_rocket):
+            raise ValueError("User ID Rocket Chat không hợp lệ")
+        config.user_id_rocket = user_id_rocket
+    if room_id is not None:
+        if not RocketChatConfig.validate_room_id(room_id):
+            raise ValueError("Room ID không hợp lệ")
+        config.room_id = room_id
+    if room_name is not None:
+        config.room_name = room_name
+    
+    config.updated_at = datetime.utcnow()
+    db.session.commit()
+    return config
+
+def get_rocket_chat_config(user_id: int) -> Optional[RocketChatConfig]:
+    """Lấy cấu hình Rocket Chat của user"""
+    return RocketChatConfig.query.filter_by(user_id=user_id, is_active=True).first()
+
+def delete_rocket_chat_config(config_id: int) -> None:
+    """Xóa cấu hình Rocket Chat"""
+    config = RocketChatConfig.query.get(config_id)
+    if config:
+        db.session.delete(config)
+        db.session.commit()
+
+def list_rocket_chat_configs() -> List[dict]:
+    """Lấy danh sách tất cả cấu hình Rocket Chat"""
+    configs = RocketChatConfig.query.filter_by(is_active=True).all()
+    return [rocket_chat_config_to_dict(config) for config in configs] 

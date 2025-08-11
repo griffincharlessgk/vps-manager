@@ -240,11 +240,64 @@ def create_app():
 
     @app.route('/api/accounts')
     def list_accounts():
-        acc_list = manager.list_accounts()
-        for acc in acc_list:
-            if 'service' not in acc:
-                acc['service'] = ''
-        return jsonify(acc_list)
+        """Lấy danh sách tài khoản từ tất cả nguồn: manual, BitLaunch, ZingProxy, CloudFly"""
+        if 'user_id' not in session:
+            return {'status': 'error', 'error': 'Chưa đăng nhập'}, 401
+        
+        try:
+            # Lấy tài khoản thủ công
+            manual_acc_list = manager.list_accounts()
+            for acc in manual_acc_list:
+                if 'service' not in acc:
+                    acc['service'] = ''
+                acc['source'] = 'manual'  # Đánh dấu nguồn
+            
+            # Lấy tài khoản từ BitLaunch
+            bitlaunch_apis = manager.list_bitlaunch_apis(session['user_id'])
+            bitlaunch_acc_list = []
+            for api in bitlaunch_apis:
+                acc = {
+                    'id': f"bitlaunch_{api['id']}",
+                    'username': api['email'],
+                    'service': 'BitLaunch',
+                    'expiry': None,  # BitLaunch không có expiry
+                    'balance': api.get('balance', 0),
+                    'source': 'bitlaunch'
+                }
+                bitlaunch_acc_list.append(acc)
+            
+            # Lấy tài khoản từ ZingProxy
+            zingproxy_acc_list = manager.list_zingproxy_accounts(session['user_id'])
+            for acc in zingproxy_acc_list:
+                acc['source'] = 'zingproxy'  # Đánh dấu nguồn
+                # Map fields để phù hợp với UI
+                acc['username'] = acc.get('email', 'N/A')
+                acc['service'] = 'ZingProxy'
+                acc['expiry'] = None  # ZingProxy không có expiry
+                acc['balance'] = acc.get('balance', 0)  # Thêm balance
+            
+            # Lấy tài khoản từ CloudFly
+            cloudfly_apis = manager.list_cloudfly_apis(session['user_id'])
+            cloudfly_acc_list = []
+            for api in cloudfly_apis:
+                acc = {
+                    'id': f"cloudfly_{api['id']}",
+                    'username': api['email'],
+                    'service': 'CloudFly',
+                    'expiry': None,  # CloudFly không có expiry
+                    'balance': api.get('balance', 0),
+                    'source': 'cloudfly'
+                }
+                cloudfly_acc_list.append(acc)
+            
+            # Kết hợp tất cả tài khoản
+            all_accounts = manual_acc_list + bitlaunch_acc_list + zingproxy_acc_list + cloudfly_acc_list
+            
+            return jsonify(all_accounts)
+            
+        except Exception as e:
+            logger.error(f"Error listing accounts: {e}")
+            return {'status': 'error', 'error': str(e)}, 500
 
     @app.route('/api/expiry-warnings')
     def expiry_warnings():
@@ -1847,6 +1900,396 @@ def create_app():
             return {'status': 'success', 'message': f'Đã cập nhật {updated_count} VPS instances'}
         except Exception as e:
             logger.error(f"Error updating CloudFly VPS: {e}")
+            return {'status': 'error', 'error': str(e)}, 500
+
+    @app.route('/api/rocket-chat/config', methods=['GET', 'POST'])
+    def api_rocket_chat_config():
+        """Quản lý cấu hình Rocket Chat"""
+        if 'user_id' not in session:
+            return {'status': 'error', 'error': 'Chưa đăng nhập'}, 401
+        
+        if request.method == 'GET':
+            try:
+                logger.info(f"[API] Getting Rocket Chat config for user {session['user_id']}")
+                config = manager.get_rocket_chat_config(session['user_id'])
+                if config:
+                    logger.info(f"[API] Found config: id={config.id}, room_id={config.room_id}")
+                    config_dict = manager.rocket_chat_config_to_dict(config)
+                    logger.info(f"[API] Config dict keys: {list(config_dict.keys())}")
+                    logger.info(f"[API] Auth token present: {'auth_token' in config_dict}")
+                    return config_dict
+                else:
+                    logger.info(f"[API] No config found for user {session['user_id']}")
+                    return {'status': 'not_found'}
+            except Exception as e:
+                logger.error(f"Error getting Rocket Chat config: {e}")
+                return {'status': 'error', 'error': str(e)}, 500
+        
+        elif request.method == 'POST':
+            try:
+                data = request.json
+                auth_token = data.get('auth_token')
+                user_id_rocket = data.get('user_id_rocket')
+                room_id = data.get('room_id')
+                room_name = data.get('room_name')
+                
+                if not all([auth_token, user_id_rocket, room_id]):
+                    return {'status': 'error', 'error': 'Thiếu thông tin bắt buộc'}, 400
+                
+                # Kiểm tra xem đã có config chưa
+                existing_config = manager.get_rocket_chat_config(session['user_id'])
+                if existing_config:
+                    # Cập nhật config hiện có
+                    config = manager.update_rocket_chat_config(
+                        existing_config.id,
+                        auth_token=auth_token,
+                        user_id_rocket=user_id_rocket,
+                        room_id=room_id,
+                        room_name=room_name
+                    )
+                    return {'status': 'success', 'message': 'Cập nhật cấu hình Rocket Chat thành công'}
+                else:
+                    # Tạo config mới
+                    config = manager.add_rocket_chat_config(
+                        session['user_id'],
+                        auth_token,
+                        user_id_rocket,
+                        room_id,
+                        room_name
+                    )
+                    return {'status': 'success', 'message': 'Thêm cấu hình Rocket Chat thành công'}
+                    
+            except ValueError as e:
+                return {'status': 'error', 'error': str(e)}, 400
+            except Exception as e:
+                logger.error(f"Error managing Rocket Chat config: {e}")
+                return {'status': 'error', 'error': str(e)}, 500
+
+    @app.route('/api/rocket-chat/channels', methods=['GET'])
+    def api_rocket_chat_channels():
+        """Lấy danh sách channels từ Rocket Chat"""
+        if 'user_id' not in session:
+            return {'status': 'error', 'error': 'Chưa đăng nhập'}, 401
+        
+        try:
+            data = request.args
+            auth_token = data.get('auth_token')
+            user_id_rocket = data.get('user_id_rocket')
+            
+            if not auth_token or not user_id_rocket:
+                return {'status': 'error', 'error': 'Thiếu auth_token hoặc user_id_rocket'}, 400
+            
+            from core.rocket_chat import get_rocket_chat_channels, get_rocket_chat_groups
+            
+            channels = get_rocket_chat_channels(auth_token, user_id_rocket)
+            groups = get_rocket_chat_groups(auth_token, user_id_rocket)
+            
+            return {
+                'status': 'success',
+                'channels': channels,
+                'groups': groups
+            }
+            
+        except Exception as e:
+            logger.error(f"Error getting Rocket Chat channels: {e}")
+            return {'status': 'error', 'error': str(e)}, 500
+
+    @app.route('/api/rocket-chat/send-notification', methods=['POST'])
+    def api_rocket_chat_send_notification():
+        """Gửi thông báo đến Rocket Chat"""
+        if 'user_id' not in session:
+            return {'status': 'error', 'error': 'Chưa đăng nhập'}, 401
+        
+        try:
+            data = request.json
+            message = data.get('message')
+            title = data.get('title')
+            text = data.get('text')
+            color = data.get('color', 'good')
+            
+            if not message and not (title and text):
+                return {'status': 'error', 'error': 'Thiếu nội dung thông báo'}, 400
+            
+            # Lấy cấu hình Rocket Chat của user
+            config = manager.get_rocket_chat_config(session['user_id'])
+            if not config:
+                return {'status': 'error', 'error': 'Chưa cấu hình Rocket Chat'}, 400
+            
+            # Sử dụng client đơn giản để tránh lỗi encryption
+            from core.rocket_chat import send_formatted_notification_simple
+            
+            success = False
+            if title and text:
+                success = send_formatted_notification_simple(
+                    config.room_id,
+                    title,
+                    text,
+                    config.auth_token,
+                    config.user_id_rocket,
+                    color
+                )
+            else:
+                success = send_formatted_notification_simple(
+                    config.room_id,
+                    "Thông báo từ VPS Manager",
+                    message,
+                    config.auth_token,
+                    config.user_id_rocket,
+                    "info"
+                )
+            
+            if success:
+                return {'status': 'success', 'message': 'Gửi thông báo thành công'}
+            else:
+                return {'status': 'error', 'error': 'Gửi thông báo thất bại'}, 500
+                
+        except Exception as e:
+            logger.error(f"Error sending Rocket Chat notification: {e}")
+            return {'status': 'error', 'error': str(e)}, 500
+
+    @app.route('/api/rocket-chat/test', methods=['POST'])
+    def api_rocket_chat_test():
+        """Test kết nối Rocket Chat"""
+        if 'user_id' not in session:
+            return {'status': 'error', 'error': 'Chưa đăng nhập'}, 401
+        
+        try:
+            data = request.json
+            auth_token = data.get('auth_token')
+            user_id_rocket = data.get('user_id_rocket')
+            room_id = data.get('room_id')
+            
+            if not all([auth_token, user_id_rocket, room_id]):
+                return {'status': 'error', 'error': 'Thiếu thông tin bắt buộc'}, 400
+            
+            from core.rocket_chat import send_notification_to_rocket_chat
+            
+            test_message = f"🧪 Test notification từ VPS Manager - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+            
+            success = send_notification_to_rocket_chat(
+                room_id,
+                test_message,
+                auth_token,  # Sử dụng trực tiếp
+                user_id_rocket,
+                alias="VPS Manager Test"
+            )
+            
+            if success:
+                return {'status': 'success', 'message': 'Test kết nối thành công! Thông báo đã được gửi.'}
+            else:
+                return {'status': 'error', 'error': 'Test kết nối thất bại'}, 500
+                
+        except Exception as e:
+            logger.error(f"Error testing Rocket Chat connection: {e}")
+            return {'status': 'error', 'error': str(e)}, 500
+
+    @app.route('/rocket-chat')
+    def rocket_chat_page():
+        """Trang cấu hình Rocket Chat"""
+        if 'user_id' not in session:
+            return redirect(url_for('login_page'))
+        return render_template('rocket_chat.html')
+
+    @app.route('/api/rocket-chat/send-account-notification', methods=['POST'])
+    def api_rocket_chat_send_account_notification():
+        """Gửi thông báo tài khoản sắp hết hạn đến Rocket Chat"""
+        if 'user_id' not in session:
+            logger.error(f"[API] User not logged in for account notification")
+            return {'status': 'error', 'error': 'Chưa đăng nhập'}, 401
+        
+        try:
+            data = request.json
+            warning_days = data.get('warning_days', 7)
+            
+            logger.info(f"[API] Sending account notification for user {session['user_id']}, warning_days: {warning_days}")
+            logger.info(f"[API] Request data: {data}")
+            
+            # Lấy cấu hình Rocket Chat của user
+            config = manager.get_rocket_chat_config(session['user_id'])
+            if not config:
+                logger.error(f"[API] No Rocket Chat config found for user {session['user_id']}")
+                return {'status': 'error', 'error': 'Chưa cấu hình Rocket Chat'}, 400
+            
+            logger.info(f"[API] Found Rocket Chat config: id={config.id}, room_id={config.room_id}, user_id_rocket={config.user_id_rocket}")
+            logger.info(f"[API] Auth token present: {bool(config.auth_token)}")
+            
+            # Lấy danh sách tài khoản từ TẤT CẢ nguồn (giống như accounts page)
+            # 1. Tài khoản thủ công
+            manual_acc_list = manager.list_accounts()
+            for acc in manual_acc_list:
+                if 'service' not in acc:
+                    acc['service'] = ''
+                acc['source'] = 'manual'  # Đánh dấu nguồn
+            
+            # 2. Tài khoản từ BitLaunch
+            bitlaunch_apis = manager.list_bitlaunch_apis(session['user_id'])
+            bitlaunch_acc_list = []
+            for api in bitlaunch_apis:
+                acc = {
+                    'id': f"bitlaunch_{api['id']}",
+                    'username': api['email'],
+                    'service': 'BitLaunch',
+                    'expiry': None,  # BitLaunch không có expiry
+                    'balance': api.get('balance', 0),
+                    'source': 'bitlaunch'
+                }
+                bitlaunch_acc_list.append(acc)
+            
+            # 3. Tài khoản từ ZingProxy
+            zingproxy_acc_list = manager.list_zingproxy_accounts(session['user_id'])
+            for acc in zingproxy_acc_list:
+                acc['source'] = 'zingproxy'  # Đánh dấu nguồn
+                # Map fields để phù hợp với UI
+                acc['username'] = acc.get('email', 'N/A')
+                acc['service'] = 'ZingProxy'
+                acc['expiry'] = None  # ZingProxy không có expiry
+                acc['balance'] = acc.get('balance', 0)  # Thêm balance
+            
+            # 4. Tài khoản từ CloudFly
+            cloudfly_apis = manager.list_cloudfly_apis(session['user_id'])
+            cloudfly_acc_list = []
+            for api in cloudfly_apis:
+                acc = {
+                    'id': f"cloudfly_{api['id']}",
+                    'username': api['email'],
+                    'service': 'CloudFly',
+                    'expiry': None,  # CloudFly không có expiry
+                    'balance': api.get('balance', 0),
+                    'source': 'cloudfly'
+                }
+                cloudfly_acc_list.append(acc)
+            
+            # Kết hợp tất cả tài khoản
+            all_accounts = manual_acc_list + bitlaunch_acc_list + zingproxy_acc_list + cloudfly_acc_list
+            
+            logger.info(f"[API] Found {len(all_accounts)} total accounts:")
+            logger.info(f"[API]   - Manual: {len(manual_acc_list)}")
+            logger.info(f"[API]   - BitLaunch: {len(bitlaunch_acc_list)}")
+            logger.info(f"[API]   - ZingProxy: {len(zingproxy_acc_list)}")
+            logger.info(f"[API]   - CloudFly: {len(cloudfly_acc_list)}")
+            
+            if all_accounts:
+                for i, acc in enumerate(all_accounts[:3]):
+                    logger.info(f"[API] Account {i+1}: {acc.get('username')} ({acc.get('service')}) - Source: {acc.get('source')} - Expiry: {acc.get('expiry')}")
+            
+            # Gửi thông báo
+            from core.rocket_chat import send_account_expiry_notification
+            
+            logger.info(f"[API] Calling send_account_expiry_notification...")
+            success = send_account_expiry_notification(
+                room_id=config.room_id,
+                auth_token=config.auth_token,  # Sử dụng trực tiếp
+                user_id=config.user_id_rocket,
+                accounts=all_accounts,  # Sử dụng danh sách đầy đủ
+                warning_days=warning_days
+            )
+            
+            logger.info(f"[API] send_account_expiry_notification result: {success}")
+            
+            if success:
+                logger.info(f"[API] Account notification sent successfully")
+                return {'status': 'success', 'message': 'Đã gửi thông báo tài khoản sắp hết hạn'}
+            else:
+                logger.error(f"[API] Account notification failed")
+                return {'status': 'error', 'error': 'Gửi thông báo thất bại'}, 500
+                
+        except Exception as e:
+            logger.error(f"Error sending account notification: {e}")
+            import traceback
+            logger.error(f"Traceback: {traceback.format_exc()}")
+            return {'status': 'error', 'error': str(e)}, 500
+
+    @app.route('/api/rocket-chat/send-daily-summary', methods=['POST'])
+    def api_rocket_chat_send_daily_summary():
+        """Gửi báo cáo tổng hợp tài khoản hàng ngày đến Rocket Chat"""
+        if 'user_id' not in session:
+            return {'status': 'error', 'error': 'Chưa đăng nhập'}, 401
+        
+        try:
+            logger.info(f"[API] Sending daily summary for user {session['user_id']}")
+            
+            # Lấy cấu hình Rocket Chat của user
+            config = manager.get_rocket_chat_config(session['user_id'])
+            if not config:
+                logger.error(f"[API] No Rocket Chat config found for user {session['user_id']}")
+                return {'status': 'error', 'error': 'Chưa cấu hình Rocket Chat'}, 400
+            
+            logger.info(f"[API] Found Rocket Chat config: room_id={config.room_id}, user_id_rocket={config.user_id_rocket}")
+            
+            # Lấy danh sách tài khoản từ TẤT CẢ nguồn (giống như accounts page)
+            # 1. Tài khoản thủ công
+            manual_acc_list = manager.list_accounts()
+            for acc in manual_acc_list:
+                if 'service' not in acc:
+                    acc['service'] = ''
+                acc['source'] = 'manual'  # Đánh dấu nguồn
+            
+            # 2. Tài khoản từ BitLaunch
+            bitlaunch_apis = manager.list_bitlaunch_apis(session['user_id'])
+            bitlaunch_acc_list = []
+            for api in bitlaunch_apis:
+                acc = {
+                    'id': f"bitlaunch_{api['id']}",
+                    'username': api['email'],
+                    'service': 'BitLaunch',
+                    'expiry': None,  # BitLaunch không có expiry
+                    'balance': api.get('balance', 0),
+                    'source': 'bitlaunch'
+                }
+                bitlaunch_acc_list.append(acc)
+            
+            # 3. Tài khoản từ ZingProxy
+            zingproxy_acc_list = manager.list_zingproxy_accounts(session['user_id'])
+            for acc in zingproxy_acc_list:
+                acc['source'] = 'zingproxy'  # Đánh dấu nguồn
+                # Map fields để phù hợp với UI
+                acc['username'] = acc.get('email', 'N/A')
+                acc['service'] = 'ZingProxy'
+                acc['expiry'] = None  # ZingProxy không có expiry
+            
+            # 4. Tài khoản từ CloudFly
+            cloudfly_apis = manager.list_cloudfly_apis(session['user_id'])
+            cloudfly_acc_list = []
+            for api in cloudfly_apis:
+                acc = {
+                    'id': f"cloudfly_{api['id']}",
+                    'username': api['email'],
+                    'service': 'CloudFly',
+                    'expiry': None,  # CloudFly không có expiry
+                    'balance': api.get('balance', 0),
+                    'source': 'cloudfly'
+                }
+                cloudfly_acc_list.append(acc)
+            
+            # Kết hợp tất cả tài khoản
+            all_accounts = manual_acc_list + bitlaunch_acc_list + zingproxy_acc_list + cloudfly_acc_list
+            
+            logger.info(f"[API] Found {len(all_accounts)} total accounts:")
+            logger.info(f"[API]   - Manual: {len(manual_acc_list)}")
+            logger.info(f"[API]   - BitLaunch: {len(bitlaunch_acc_list)}")
+            logger.info(f"[API]   - ZingProxy: {len(zingproxy_acc_list)}")
+            logger.info(f"[API]   - CloudFly: {len(cloudfly_acc_list)}")
+            
+            # Gửi báo cáo
+            from core.rocket_chat import send_daily_account_summary
+            
+            logger.info(f"[API] Calling send_daily_account_summary...")
+            success = send_daily_account_summary(
+                room_id=config.room_id,
+                auth_token=config.auth_token,  # Sử dụng trực tiếp
+                user_id=config.user_id_rocket,
+                accounts=all_accounts  # Sử dụng danh sách đầy đủ
+            )
+            
+            logger.info(f"[API] send_daily_account_summary result: {success}")
+            
+            if success:
+                return {'status': 'success', 'message': 'Đã gửi báo cáo tổng hợp hàng ngày'}
+            else:
+                return {'status': 'error', 'error': 'Gửi báo cáo thất bại'}, 500
+                
+        except Exception as e:
+            logger.error(f"Error sending daily summary: {e}")
             return {'status': 'error', 'error': str(e)}, 500
 
     return app

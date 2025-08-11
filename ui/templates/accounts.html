@@ -15,6 +15,11 @@
       <option value="50">50 dòng/trang</option>
     </select>
   </div>
+  <div class="col-md-3">
+    <button type="button" class="btn btn-info" id="send-rocket-notification-btn">
+      📢 Gửi thông báo Rocket Chat
+    </button>
+  </div>
 </div>
 <div class="card mb-4 admin-only">
   <div class="card-body">
@@ -49,9 +54,10 @@
   <thead>
     <tr>
       <th>ID</th>
+      <th>Nguồn</th>
       <th>Dịch vụ</th>
       <th>Tên đăng nhập</th>
-      <th>Mật khẩu</th>
+      <th>Số dư</th>
       <th>Ngày hết hạn</th>
       <th>Hành động</th>
     </tr>
@@ -82,6 +88,37 @@
     </div>
   </div>
 </div>
+        <!-- Thêm section hiển thị tài khoản đã hết hạn -->
+        <div class="row mb-4">
+          <div class="col-12">
+            <div class="card border-danger">
+              <div class="card-header bg-danger text-white">
+                <h5 class="card-title mb-0">🚨 Tài khoản đã hết hạn</h5>
+              </div>
+              <div class="card-body">
+                <div id="expired-accounts-list">
+                  <!-- Danh sách tài khoản đã hết hạn sẽ được load ở đây -->
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Thêm section hiển thị tài khoản sắp hết hạn -->
+        <div class="row mb-4">
+          <div class="col-12">
+            <div class="card border-warning">
+              <div class="card-header bg-warning text-dark">
+                <h5 class="card-title mb-0">⚠️ Tài khoản sắp hết hạn</h5>
+              </div>
+              <div class="card-body">
+                <div id="expiring-accounts-list">
+                  <!-- Danh sách tài khoản sắp hết hạn sẽ được load ở đây -->
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
 <script>
 let accData = [];
 let currentPageAcc = 1;
@@ -113,16 +150,59 @@ function renderAccTable() {
   const end = start + rowsPerPageAcc;
   filtered.slice(start, end).forEach(acc => {
     const tr = document.createElement('tr');
-    tr.innerHTML = `
-      <td>${acc.id}</td>
-      <td>${acc.service || ''}</td>
-      <td>${acc.username || ''}</td>
-      <td>${acc.password || ''}</td>
-      <td>${acc.expiry || ''}</td>
-      <td>
+    
+    // Hiển thị nguồn với badge màu
+    let sourceBadge = '';
+    if (acc.source === 'bitlaunch') {
+      sourceBadge = '<span class="badge bg-info">BitLaunch</span>';
+    } else if (acc.source === 'zingproxy') {
+      sourceBadge = '<span class="badge bg-success">ZingProxy</span>';
+    } else if (acc.source === 'cloudfly') {
+      sourceBadge = '<span class="badge bg-warning">CloudFly</span>';
+    } else {
+      sourceBadge = '<span class="badge bg-secondary">Manual</span>';
+    }
+    
+    // Hiển thị số dư với format
+    let balanceDisplay = '';
+    if (acc.balance !== undefined && acc.balance !== null) {
+      balanceDisplay = `$${acc.balance.toLocaleString()}`;
+    } else {
+      balanceDisplay = 'N/A';
+    }
+    
+    // Xác định actions dựa trên nguồn
+    let actions = '';
+    if (acc.source === 'manual') {
+      actions = `
         <button class="btn btn-sm btn-warning me-1 admin-only" onclick='editAcc(${JSON.stringify(acc)})'>Sửa</button>
         <button class="btn btn-sm btn-danger admin-only" onclick='showDeleteAccModal("${acc.id}", "${acc.username||''}")'>Xóa</button>
-      </td>
+      `;
+    } else if (acc.source === 'bitlaunch') {
+      actions = `
+        <button class="btn btn-sm btn-info me-1" onclick='viewBitLaunchAccount("${acc.id}")'>Chi tiết</button>
+        <span class="text-muted small">Tự động từ BitLaunch</span>
+      `;
+    } else if (acc.source === 'zingproxy') {
+      actions = `
+        <button class="btn btn-sm btn-info me-1" onclick='viewZingProxyAccount("${acc.id}")'>Chi tiết</button>
+        <span class="text-muted small">Tự động từ ZingProxy</span>
+      `;
+    } else if (acc.source === 'cloudfly') {
+      actions = `
+        <button class="btn btn-sm btn-info me-1" onclick='viewCloudFlyAccount("${acc.id}")'>Chi tiết</button>
+        <span class="text-muted small">Tự động từ CloudFly</span>
+      `;
+    }
+    
+    tr.innerHTML = `
+      <td>${acc.id}</td>
+      <td>${sourceBadge}</td>
+      <td>${acc.service || ''}</td>
+      <td>${acc.username || ''}</td>
+      <td>${balanceDisplay}</td>
+      <td>${acc.expiry || ''}</td>
+      <td>${actions}</td>
     `;
     tbody.appendChild(tr);
   });
@@ -229,6 +309,129 @@ document.getElementById('confirm-delete-acc-btn').onclick = function() {
   modal.hide();
 };
 
+// Thêm các hàm để xem chi tiết tài khoản từ API
+function viewBitLaunchAccount(accId) {
+  // Redirect đến trang BitLaunch để xem chi tiết
+  window.open('/bitlaunch', '_blank');
+}
+
+function viewZingProxyAccount(accId) {
+  // Redirect đến trang ZingProxy để xem chi tiết
+  window.open('/zingproxy', '_blank');
+}
+
+function viewCloudFlyAccount(accId) {
+  // Redirect đến trang CloudFly để xem chi tiết
+  window.open('/cloudfly', '_blank');
+}
+
+// Load accounts data khi trang load
 loadAccounts();
+
+// Gửi thông báo Rocket Chat từ trang tài khoản
+document.getElementById('send-rocket-notification-btn').addEventListener('click', function() {
+  // Hiển thị modal xác nhận
+  const modal = `
+    <div class="modal fade" id="rocketNotificationModal" tabindex="-1">
+      <div class="modal-dialog">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title">Gửi thông báo tài khoản đến Rocket Chat</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+          </div>
+          <div class="modal-body">
+            <div class="mb-3">
+              <label class="form-label">Loại thông báo</label>
+              <select class="form-select" id="notification-type">
+                <option value="expiry">Thông báo tài khoản sắp hết hạn</option>
+                <option value="daily">Báo cáo tổng hợp hàng ngày</option>
+              </select>
+            </div>
+            <div class="mb-3" id="warning-days-group">
+              <label class="form-label">Số ngày cảnh báo trước</label>
+              <select class="form-select" id="warning-days-modal">
+                <option value="1">1 ngày</option>
+                <option value="3">3 ngày</option>
+                <option value="7" selected>7 ngày</option>
+                <option value="14">14 ngày</option>
+                <option value="30">30 ngày</option>
+              </select>
+            </div>
+            <div id="notification-result-modal"></div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Hủy</button>
+            <button type="button" class="btn btn-primary" id="confirm-send-notification">Gửi thông báo</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+  
+  // Thêm modal vào body
+  document.body.insertAdjacentHTML('beforeend', modal);
+  
+  const modalElement = document.getElementById('rocketNotificationModal');
+  const modalInstance = new bootstrap.Modal(modalElement);
+  modalInstance.show();
+  
+  // Xử lý thay đổi loại thông báo
+  document.getElementById('notification-type').addEventListener('change', function() {
+    const warningDaysGroup = document.getElementById('warning-days-group');
+    if (this.value === 'daily') {
+      warningDaysGroup.style.display = 'none';
+    } else {
+      warningDaysGroup.style.display = 'block';
+    }
+  });
+  
+  // Xử lý gửi thông báo
+  document.getElementById('confirm-send-notification').addEventListener('click', function() {
+    const notificationType = document.getElementById('notification-type').value;
+    const warningDays = parseInt(document.getElementById('warning-days-modal').value);
+    const resultDiv = document.getElementById('notification-result-modal');
+    
+    let endpoint = '';
+    let data = {};
+    
+    if (notificationType === 'expiry') {
+      endpoint = '/api/rocket-chat/send-account-notification';
+      data = { warning_days: warningDays };
+    } else {
+      endpoint = '/api/rocket-chat/send-daily-summary';
+      data = {};
+    }
+    
+    fetch(endpoint, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(data)
+    })
+    .then(response => response.json())
+    .then(data => {
+      if (data.status === 'success') {
+        resultDiv.innerHTML = '<div class="alert alert-success">' + data.message + '</div>';
+        // Đóng modal sau 2 giây
+        setTimeout(() => {
+          modalInstance.hide();
+          document.body.removeChild(modalElement);
+        }, 2000);
+      } else {
+        resultDiv.innerHTML = '<div class="alert alert-danger">Lỗi: ' + data.error + '</div>';
+      }
+    })
+    .catch(error => {
+      console.error('Error sending notification:', error);
+      resultDiv.innerHTML = '<div class="alert alert-danger">Lỗi khi gửi thông báo</div>';
+    });
+  });
+  
+  // Xử lý khi modal đóng
+  modalElement.addEventListener('hidden.bs.modal', function() {
+    document.body.removeChild(modalElement);
+  });
+});
 </script>
 {% endblock %} 
