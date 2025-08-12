@@ -196,30 +196,30 @@ def send_account_expiry_notification(
             logger.info(f"[RocketChat] Checking balance for {account.get('username', 'Unknown')} - Source: {source} - Balance: ${balance}")
             
             if source == 'bitlaunch':
-                if balance < 10:  # Cảnh báo khi balance < $10
+                if balance < 5000:  # Cảnh báo khi balance < 5000
                     low_balance_accounts.append({
                         'account': account,
                         'balance': balance,
                         'type': 'low_balance',
-                        'threshold': 10
+                        'threshold': 5000
                     })
                     logger.info(f"[RocketChat] Added BitLaunch to low balance list: {account.get('username')} (${balance} < $10)")
             elif source == 'zingproxy':
-                if balance < 5:  # Cảnh báo khi balance < $5
+                if balance < 100000:  # Cảnh báo khi balance < 100000
                     low_balance_accounts.append({
                         'account': account,
                         'balance': balance,
                         'type': 'low_balance',
-                        'threshold': 5
+                        'threshold': 100000
                     })
                     logger.info(f"[RocketChat] Added ZingProxy to low balance list: {account.get('username')} (${balance} < $5)")
             elif source == 'cloudfly':
-                if balance < 10:  # Cảnh báo khi balance < $10
+                if balance < 50000:  # Cảnh báo khi balance < 50000
                     low_balance_accounts.append({
                         'account': account,
                         'balance': balance,
                         'type': 'low_balance',
-                        'threshold': 10
+                        'threshold': 50000
                     })
                     logger.info(f"[RocketChat] Added CloudFly to low balance list: {account.get('username')} (${balance} < $10)")
         
@@ -339,6 +339,183 @@ def send_account_expiry_notification(
         logger.error(f"[RocketChat] Traceback: {traceback.format_exc()}")
         return False
 
+def send_detailed_account_info(
+    room_id: str,
+    auth_token: str,
+    user_id: str,
+    accounts: List[Dict]
+) -> bool:
+    """Gửi thông tin chi tiết tất cả tài khoản đến Rocket Chat"""
+    try:
+        logger.info(f"[RocketChat] Starting detailed account info notification")
+        logger.info(f"[RocketChat] Room ID: {room_id}, User ID: {user_id}")
+        logger.info(f"[RocketChat] Total accounts to report: {len(accounts) if accounts else 0}")
+        
+        if not accounts:
+            logger.info(f"[RocketChat] No accounts to report")
+            return True
+        
+        # Thống kê theo nguồn
+        manual_accounts = [acc for acc in accounts if acc.get('source') == 'manual']
+        bitlaunch_accounts = [acc for acc in accounts if acc.get('source') == 'bitlaunch']
+        zingproxy_accounts = [acc for acc in accounts if acc.get('source') == 'zingproxy']
+        cloudfly_accounts = [acc for acc in accounts if acc.get('source') == 'cloudfly']
+        
+        # Tính tổng balance
+        total_balance = 0
+        for account in accounts:
+            if account.get('source') in ['bitlaunch', 'zingproxy', 'cloudfly']:
+                total_balance += account.get('balance', 0)
+        
+        # Tạo tiêu đề
+        title = f"📊 Thông tin chi tiết tài khoản - {datetime.now().strftime('%d/%m/%Y %H:%M')}"
+        
+        # Tạo nội dung báo cáo
+        text = f"**📈 Tổng quan hệ thống:**\n\n"
+        text += f"🔢 **Tổng số tài khoản:** {len(accounts)}\n"
+        text += f"   • 📝 Thủ công: {len(manual_accounts)}\n"
+        text += f"   • 🚀 BitLaunch: {len(bitlaunch_accounts)}\n"
+        text += f"   • 🌐 ZingProxy: {len(zingproxy_accounts)}\n"
+        text += f"   • ☁️ CloudFly: {len(cloudfly_accounts)}\n\n"
+        
+        # Thông tin balance tổng hợp
+        if total_balance > 0:
+            text += f"💰 **Tổng balance:** ${total_balance:,.2f}\n"
+            text += f"   • BitLaunch: ${sum([acc.get('balance', 0) for acc in bitlaunch_accounts]):,.2f}\n"
+            text += f"   • ZingProxy: ${sum([acc.get('balance', 0) for acc in zingproxy_accounts]):,.2f}\n"
+            text += f"   • CloudFly: ${sum([acc.get('balance', 0) for acc in cloudfly_accounts]):,.2f}\n\n"
+        
+        # Chi tiết tài khoản thủ công
+        if manual_accounts:
+            text += f"📝 **Tài khoản thủ công ({len(manual_accounts)}):**\n"
+            for acc in manual_accounts:
+                text += f"   • **{acc.get('username', acc.get('id', 'Unknown'))}**\n"
+                text += f"     - Dịch vụ: {acc.get('service', 'N/A')}\n"
+                text += f"     - Ngày hết hạn: {acc.get('expiry', 'N/A')}\n"
+                if acc.get('expiry'):
+                    try:
+                        expiry_date = datetime.strptime(acc['expiry'], '%Y-%m-%d').date()
+                        today = datetime.now().date()
+                        days_left = (expiry_date - today).days
+                        if days_left < 0:
+                            text += f"     - Trạng thái: 🚨 Đã hết hạn {abs(days_left)} ngày\n"
+                        elif days_left == 0:
+                            text += f"     - Trạng thái: 🚨 HẾT HẠN HÔM NAY!\n"
+                        elif days_left <= 7:
+                            text += f"     - Trạng thái: ⚠️ Còn {days_left} ngày\n"
+                        else:
+                            text += f"     - Trạng thái: ✅ Còn {days_left} ngày\n"
+                    except:
+                        text += f"     - Trạng thái: ❓ Không xác định\n"
+                text += "\n"
+        
+        # Chi tiết tài khoản BitLaunch
+        if bitlaunch_accounts:
+            text += f"🚀 **Tài khoản BitLaunch ({len(bitlaunch_accounts)}):**\n"
+            for acc in bitlaunch_accounts:
+                balance = acc.get('balance', 0)
+                balance_status = "🚨 Balance thấp" if balance < 5000 else "✅ Balance ổn"
+                text += f"   • **{acc.get('username', acc.get('id', 'Unknown'))}**\n"
+                text += f"     - Email: {acc.get('username', 'N/A')}\n"
+                text += f"     - Balance: ${balance:,.2f}\n"
+                text += f"     - Trạng thái: {balance_status}\n\n"
+        
+        # Chi tiết tài khoản ZingProxy
+        if zingproxy_accounts:
+            text += f"🌐 **Tài khoản ZingProxy ({len(zingproxy_accounts)}):**\n"
+            for acc in zingproxy_accounts:
+                balance = acc.get('balance', 0)
+                balance_status = "🚨 Balance thấp" if balance < 100000 else "✅ Balance ổn"
+                text += f"   • **{acc.get('username', acc.get('id', 'Unknown'))}**\n"
+                text += f"     - Email: {acc.get('username', 'N/A')}\n"
+                text += f"     - Balance: ${balance:,.2f}\n"
+                text += f"     - Trạng thái: {balance_status}\n\n"
+        
+        # Chi tiết tài khoản CloudFly
+        if cloudfly_accounts:
+            text += f"☁️ **Tài khoản CloudFly ({len(cloudfly_accounts)}):**\n"
+            for acc in cloudfly_accounts:
+                balance = acc.get('balance', 0)
+                balance_status = "🚨 Balance thấp" if balance < 50000 else "✅ Balance ổn"
+                text += f"   • **{acc.get('username', acc.get('id', 'Unknown'))}**\n"
+                text += f"     - Email: {acc.get('username', 'N/A')}\n"
+                text += f"     - Balance: ${balance:,.2f}\n"
+                text += f"     - Trạng thái: {balance_status}\n\n"
+        
+        # Thống kê cảnh báo
+        warnings_count = 0
+        expired_count = 0
+        low_balance_count = 0
+        
+        # Đếm tài khoản đã hết hạn
+        for acc in manual_accounts:
+            if acc.get('expiry'):
+                try:
+                    expiry_date = datetime.strptime(acc['expiry'], '%Y-%m-%d').date()
+                    today = datetime.now().date()
+                    days_left = (expiry_date - today).days
+                    if days_left <= 0:
+                        expired_count += 1
+                        warnings_count += 1
+                except:
+                    pass
+        
+        # Đếm tài khoản balance thấp
+        for acc in accounts:
+            if acc.get('source') == 'bitlaunch' and acc.get('balance', 0) < 5000:
+                low_balance_count += 1
+                warnings_count += 1
+            elif acc.get('source') == 'zingproxy' and acc.get('balance', 0) < 100000:
+                low_balance_count += 1
+                warnings_count += 1
+            elif acc.get('source') == 'cloudfly' and acc.get('balance', 0) < 50000:
+                low_balance_count += 1
+                warnings_count += 1
+        
+        # Tóm tắt cảnh báo
+        if warnings_count > 0:
+            text += f"⚠️ **Tóm tắt cảnh báo:**\n"
+            text += f"   • Tài khoản đã hết hạn: {expired_count}\n"
+            text += f"   • Tài khoản balance thấp: {low_balance_count}\n"
+            text += f"   • Tổng cảnh báo: {warnings_count}\n\n"
+        else:
+            text += f"✅ **Không có cảnh báo nào**\n\n"
+        
+        text += f"🕐 Báo cáo được tạo lúc: {datetime.now().strftime('%H:%M:%S')}"
+        
+        logger.info(f"[RocketChat] Detailed account info prepared:")
+        logger.info(f"[RocketChat] Title: {title}")
+        logger.info(f"[RocketChat] Text length: {len(text)} characters")
+        logger.info(f"[RocketChat] Warnings: {warnings_count} (expired: {expired_count}, low_balance: {low_balance_count})")
+        
+        # Chọn màu dựa trên số lượng cảnh báo
+        if warnings_count > 0:
+            color = "danger" if expired_count > 0 else "warning"
+        else:
+            color = "good"
+        
+        logger.info(f"[RocketChat] Selected color: {color}")
+        
+        # Gửi thông báo
+        logger.info(f"[RocketChat] Sending detailed account info to Rocket Chat...")
+        result = send_formatted_notification_simple(
+            room_id=room_id,
+            title=title,
+            text=text,
+            auth_token=auth_token,
+            user_id=user_id,
+            color=color
+        )
+        
+        logger.info(f"[RocketChat] send_formatted_notification_simple result: {result}")
+        return result
+        
+    except Exception as e:
+        logger.error(f"[RocketChat] Error sending detailed account info: {e}")
+        import traceback
+        logger.error(f"[RocketChat] Traceback: {traceback.format_exc()}")
+        return False
+
 def send_daily_account_summary(
     room_id: str,
     auth_token: str,
@@ -386,7 +563,14 @@ def send_daily_account_summary(
                 total_balance += balance
                 
                 # Kiểm tra balance thấp
-                threshold = 5 if account.get('source') == 'zingproxy' else 10
+                if account.get('source') == 'zingproxy':
+                    threshold = 100000
+                elif account.get('source') == 'bitlaunch':
+                    threshold = 5000
+                elif account.get('source') == 'cloudfly':
+                    threshold = 50000
+                else:
+                    threshold = 0
                 if balance < threshold:
                     low_balance_accounts.append({
                         'account': account,

@@ -44,7 +44,7 @@
     </div>
   </div>
   
-  <div class="col-md-6">
+  <!-- <div class="col-md-6">
     <div class="card mb-4">
       <div class="card-header">
         <h5 class="card-title mb-0">Test kết nối</h5>
@@ -71,11 +71,11 @@
         
         <div id="test-result" class="mt-3"></div>
       </div>
-    </div>
+    </div> -->
     
  
     
-    <div class="card mt-4">
+    <!-- <div class="card mt-4">
       <div class="card-header">
         <h5 class="card-title mb-0">Gửi thông báo tùy chỉnh</h5>
       </div>
@@ -107,7 +107,22 @@
         <div id="notification-result" class="mt-3"></div>
       </div>
     </div>
-    
+     -->
+    <!-- Thêm card mới cho thông tin chi tiết tài khoản -->
+    <div class="card mt-4">
+      <div class="card-header">
+        <h5 class="card-title mb-0">📊 Thông tin chi tiết tài khoản</h5>
+      </div>
+      <div class="card-body">
+        <p class="card-text">Gửi thông tin chi tiết tất cả tài khoản từ mọi nguồn (Manual, BitLaunch, ZingProxy, CloudFly) bao gồm balance, trạng thái hết hạn, và thống kê tổng hợp.</p>
+        <button type="button" class="btn btn-info" id="send-detailed-info-btn">
+          📊 Gửi thông tin chi tiết tài khoản
+        </button>
+        <div id="detailed-info-result" class="mt-3"></div>
+      </div>
+    </div>
+
+    <!-- Thêm card mới cho thông báo tài khoản -->
     <div class="card mt-4">
       <div class="card-header">
         <h5 class="card-title mb-0">Thông báo tài khoản</h5>
@@ -351,76 +366,141 @@ function selectRoom(roomId, roomName) {
   modal.hide();
 }
 
-// Test connection
-const testConnectionForm = document.getElementById('test-connection-form');
-if (testConnectionForm) {
-  testConnectionForm.addEventListener('submit', function(e) {
-    e.preventDefault();
+// // Test connection
+// const testConnectionForm = document.getElementById('test-connection-form');
+// if (testConnectionForm) {
+//   testConnectionForm.addEventListener('submit', function(e) {
+//     e.preventDefault();
     
-    const authToken = document.getElementById('test-auth-token').value;
-    const userId = document.getElementById('test-user-id').value;
-    const roomId = document.getElementById('test-room-id').value;
+//     const authToken = document.getElementById('test-auth-token').value;
+//     const userId = document.getElementById('test-user-id').value;
+//     const roomId = document.getElementById('test-room-id').value;
     
-    fetch('/api/rocket-chat/test', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        auth_token: authToken,
-        user_id_rocket: userId,
-        room_id: roomId
-      })
-    })
-    .then(response => response.json())
-    .then(data => {
-      const resultDiv = document.getElementById('test-result');
-      if (data.status === 'success') {
-        resultDiv.innerHTML = '<div class="alert alert-success">' + data.message + '</div>';
-      } else {
-        resultDiv.innerHTML = '<div class="alert alert-danger">Lỗi: ' + data.error + '</div>';
-      }
-    })
-    .catch(error => {
-      console.error('Error testing connection:', error);
-      document.getElementById('test-result').innerHTML = '<div class="alert alert-danger">Lỗi khi test kết nối</div>';
-    });
-  });
-}
+//     fetch('/api/rocket-chat/test', {
+//       method: 'POST',
+//       headers: {
+//         'Content-Type': 'application/json',
+//       },
+//       body: JSON.stringify({
+//         auth_token: authToken,
+//         user_id_rocket: userId,
+//         room_id: roomId
+//       })
+//     })
+//     .then(response => response.json())
+//     .then(data => {
+//       const resultDiv = document.getElementById('test-result');
+//       if (data.status === 'success') {
+//         resultDiv.innerHTML = '<div class="alert alert-success">' + data.message + '</div>';
+//       } else {
+//         resultDiv.innerHTML = '<div class="alert alert-danger">Lỗi: ' + data.error + '</div>';
+//       }
+//     })
+//     .catch(error => {
+//       console.error('Error testing connection:', error);
+//       document.getElementById('test-result').innerHTML = '<div class="alert alert-danger">Lỗi khi test kết nối</div>';
+//     });
+//   });
+// }
 
 // Send notification
-const sendNotificationForm = document.getElementById('send-notification-form');
-if (sendNotificationForm) {
-  sendNotificationForm.addEventListener('submit', function(e) {
-    e.preventDefault();
+// const sendNotificationForm = document.getElementById('send-notification-form');
+// if (sendNotificationForm) {
+//   sendNotificationForm.addEventListener('submit', function(e) {
+//     e.preventDefault();
     
-    const title = document.getElementById('notification-title').value;
-    const text = document.getElementById('notification-text').value;
-    const color = document.getElementById('notification-color').value;
+//     const title = document.getElementById('notification-title').value;
+//     const text = document.getElementById('notification-text').value;
+//     const color = document.getElementById('notification-color').value;
     
-    fetch('/api/rocket-chat/send-notification', {
+//     fetch('/api/rocket-chat/send-notification', {
+//       method: 'POST',
+//       headers: {
+//         'Content-Type': 'application/json',
+//       },
+//       body: JSON.stringify({
+//         title: title,
+//         text: text,
+//         color: color
+//       })
+//     })
+//     .then(response => response.json())
+//     .then(data => {
+//       const resultDiv = document.getElementById('notification-result');
+//       if (data.status === 'success') {
+//         resultDiv.innerHTML = '<div class="alert alert-success">' + data.message + '</div>';
+//       } else {
+//         resultDiv.innerHTML = '<div class="alert alert-danger">Lỗi: ' + data.error + '</div>';
+//       }
+//     })
+//     .catch(error => {
+//       console.error('Error sending notification:', error);
+//       document.getElementById('notification-result').innerHTML = '<div class="alert alert-danger">Lỗi khi gửi thông báo</div>';
+//     });
+//   });
+// }
+
+// Send detailed account info
+const sendDetailedInfoBtn = document.getElementById('send-detailed-info-btn');
+if (sendDetailedInfoBtn) {
+  sendDetailedInfoBtn.addEventListener('click', function() {
+    console.log('🔄 Sending detailed account info...');
+    
+    const authToken = document.getElementById('auth-token').value;
+    const userIdRocket = document.getElementById('user-id-rocket').value;
+    
+    if (!authToken || !userIdRocket) {
+      alert('Vui lòng nhập Auth Token và User ID trước');
+      return;
+    }
+
+    // Hiển thị loading
+    const resultDiv = document.getElementById('detailed-info-result');
+    resultDiv.innerHTML = '<div class="alert alert-info">🔄 Đang gửi thông tin chi tiết tài khoản...</div>';
+
+    // Gọi API với method POST
+    fetch('/api/rocket-chat/send-detailed-info', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({
-        title: title,
-        text: text,
-        color: color
-      })
+      body: JSON.stringify({}) // Gửi body rỗng vì không cần data
     })
-    .then(response => response.json())
-    .then(data => {
-      const resultDiv = document.getElementById('notification-result');
-      if (data.status === 'success') {
-        resultDiv.innerHTML = '<div class="alert alert-success">' + data.message + '</div>';
-      } else {
-        resultDiv.innerHTML = '<div class="alert alert-danger">Lỗi: ' + data.error + '</div>';
+    .then(response => {
+      console.log('📡 Response status:', response.status);
+      console.log('📡 Response headers:', response.headers);
+      
+      // Kiểm tra content-type
+      const contentType = response.headers.get('content-type');
+      if (!contentType || !contentType.includes('application/json')) {
+        throw new Error(`Expected JSON response but got: ${contentType}`);
+      }
+      
+      return response.text(); // Lấy response text trước
+    })
+    .then(text => {
+      console.log('📡 Response text:', text);
+      
+      try {
+        const data = JSON.parse(text);
+        console.log('📡 Parsed data:', data);
+        
+        if (data.status === 'success') {
+          resultDiv.innerHTML = '<div class="alert alert-success">' + data.message + '</div>';
+          console.log('✅ Detailed account info sent successfully');
+        } else {
+          resultDiv.innerHTML = '<div class="alert alert-danger">Lỗi: ' + (data.error || 'Không xác định') + '</div>';
+          console.log('❌ Detailed account info failed:', data.error);
+        }
+      } catch (parseError) {
+        console.error('❌ JSON parse error:', parseError);
+        console.error('❌ Raw response:', text);
+        resultDiv.innerHTML = '<div class="alert alert-danger">Lỗi: Response không phải JSON hợp lệ</div>';
       }
     })
     .catch(error => {
-      console.error('Error sending notification:', error);
-      document.getElementById('notification-result').innerHTML = '<div class="alert alert-danger">Lỗi khi gửi thông báo</div>';
+      console.error('❌ Error sending detailed account info:', error);
+      resultDiv.innerHTML = '<div class="alert alert-danger">Lỗi khi gửi thông tin chi tiết tài khoản: ' + error.message + '</div>';
     });
   });
 }

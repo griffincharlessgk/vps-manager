@@ -425,6 +425,7 @@ document.getElementById('send-rocket-notification-btn').addEventListener('click'
               <select class="form-select" id="notification-type">
                 <option value="expiry">Thông báo tài khoản sắp hết hạn</option>
                 <option value="daily">Báo cáo tổng hợp hàng ngày</option>
+                <option value="detailed">Thông tin chi tiết tài khoản</option>
               </select>
             </div>
             <div class="mb-3" id="warning-days-group">
@@ -477,8 +478,11 @@ document.getElementById('send-rocket-notification-btn').addEventListener('click'
     if (notificationType === 'expiry') {
       endpoint = '/api/rocket-chat/send-account-notification';
       data = { warning_days: warningDays };
-    } else {
+    } else if (notificationType === 'daily') {
       endpoint = '/api/rocket-chat/send-daily-summary';
+      data = {};
+    } else if (notificationType === 'detailed') {
+      endpoint = '/api/rocket-chat/send-detailed-info';
       data = {};
     }
     

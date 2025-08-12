@@ -19,6 +19,7 @@ from core.validation import (
     ValidationError
 )
 from core.logging_config import setup_logging, log_security_event, log_api_request
+from core.rocket_chat import send_daily_account_summary, send_account_expiry_notification, send_detailed_account_info
 
 # Load environment variables
 load_dotenv()
@@ -2201,96 +2202,142 @@ def create_app():
 
     @app.route('/api/rocket-chat/send-daily-summary', methods=['POST'])
     def api_rocket_chat_send_daily_summary():
-        """Gửi báo cáo tổng hợp tài khoản hàng ngày đến Rocket Chat"""
+        """API gửi báo cáo tổng hợp tài khoản hàng ngày"""
         if 'user_id' not in session:
             return {'status': 'error', 'error': 'Chưa đăng nhập'}, 401
         
         try:
-            logger.info(f"[API] Sending daily summary for user {session['user_id']}")
-            
-            # Lấy cấu hình Rocket Chat của user
+            # Lấy config Rocket Chat
             config = manager.get_rocket_chat_config(session['user_id'])
             if not config:
-                logger.error(f"[API] No Rocket Chat config found for user {session['user_id']}")
                 return {'status': 'error', 'error': 'Chưa cấu hình Rocket Chat'}, 400
             
-            logger.info(f"[API] Found Rocket Chat config: room_id={config.room_id}, user_id_rocket={config.user_id_rocket}")
-            
             # Lấy danh sách tài khoản từ TẤT CẢ nguồn (giống như accounts page)
-            # 1. Tài khoản thủ công
             manual_acc_list = manager.list_accounts()
             for acc in manual_acc_list:
-                if 'service' not in acc:
-                    acc['service'] = ''
-                acc['source'] = 'manual'  # Đánh dấu nguồn
-            
-            # 2. Tài khoản từ BitLaunch
+                if 'service' not in acc: acc['service'] = ''
+                acc['source'] = 'manual'
             bitlaunch_apis = manager.list_bitlaunch_apis(session['user_id'])
             bitlaunch_acc_list = []
             for api in bitlaunch_apis:
                 acc = {
-                    'id': f"bitlaunch_{api['id']}",
-                    'username': api['email'],
-                    'service': 'BitLaunch',
-                    'expiry': None,  # BitLaunch không có expiry
-                    'balance': api.get('balance', 0),
-                    'source': 'bitlaunch'
+                    'id': f"bitlaunch_{api['id']}", 'username': api['email'], 'service': 'BitLaunch',
+                    'expiry': None, 'balance': api.get('balance', 0), 'source': 'bitlaunch'
                 }
                 bitlaunch_acc_list.append(acc)
-            
-            # 3. Tài khoản từ ZingProxy
             zingproxy_acc_list = manager.list_zingproxy_accounts(session['user_id'])
             for acc in zingproxy_acc_list:
-                acc['source'] = 'zingproxy'  # Đánh dấu nguồn
-                # Map fields để phù hợp với UI
+                acc['source'] = 'zingproxy'
                 acc['username'] = acc.get('email', 'N/A')
                 acc['service'] = 'ZingProxy'
-                acc['expiry'] = None  # ZingProxy không có expiry
-            
-            # 4. Tài khoản từ CloudFly
+                acc['expiry'] = None
+                acc['balance'] = acc.get('balance', 0) # Added this line
             cloudfly_apis = manager.list_cloudfly_apis(session['user_id'])
             cloudfly_acc_list = []
             for api in cloudfly_apis:
                 acc = {
-                    'id': f"cloudfly_{api['id']}",
-                    'username': api['email'],
-                    'service': 'CloudFly',
-                    'expiry': None,  # CloudFly không có expiry
-                    'balance': api.get('balance', 0),
-                    'source': 'cloudfly'
+                    'id': f"cloudfly_{api['id']}", 'username': api['email'], 'service': 'CloudFly',
+                    'expiry': None, 'balance': api.get('balance', 0), 'source': 'cloudfly'
                 }
                 cloudfly_acc_list.append(acc)
-            
-            # Kết hợp tất cả tài khoản
             all_accounts = manual_acc_list + bitlaunch_acc_list + zingproxy_acc_list + cloudfly_acc_list
-            
             logger.info(f"[API] Found {len(all_accounts)} total accounts:")
             logger.info(f"[API]   - Manual: {len(manual_acc_list)}")
             logger.info(f"[API]   - BitLaunch: {len(bitlaunch_acc_list)}")
             logger.info(f"[API]   - ZingProxy: {len(zingproxy_acc_list)}")
             logger.info(f"[API]   - CloudFly: {len(cloudfly_acc_list)}")
             
-            # Gửi báo cáo
-            from core.rocket_chat import send_daily_account_summary
-            
-            logger.info(f"[API] Calling send_daily_account_summary...")
+            # Gửi báo cáo tổng hợp
             success = send_daily_account_summary(
-                room_id=config.room_id,
-                auth_token=config.auth_token,  # Sử dụng trực tiếp
-                user_id=config.user_id_rocket,
-                accounts=all_accounts  # Sử dụng danh sách đầy đủ
+                room_id=config.room_id, auth_token=config.auth_token, user_id=config.user_id_rocket,
+                accounts=all_accounts
             )
             
-            logger.info(f"[API] send_daily_account_summary result: {success}")
-            
             if success:
-                return {'status': 'success', 'message': 'Đã gửi báo cáo tổng hợp hàng ngày'}
+                return {'status': 'success', 'message': 'Đã gửi báo cáo tổng hợp hàng ngày thành công!'}
             else:
-                return {'status': 'error', 'error': 'Gửi báo cáo thất bại'}, 500
-                
+                return {'status': 'error', 'error': 'Gửi báo cáo thất bại'}
+            
         except Exception as e:
             logger.error(f"Error sending daily summary: {e}")
-            return {'status': 'error', 'error': str(e)}, 500
+            return {'status': 'error', 'error': f'Lỗi hệ thống: {str(e)}'}
+
+    @app.route('/api/rocket-chat/send-detailed-info', methods=['POST'])
+    def api_rocket_chat_send_detailed_info():
+        """API gửi thông tin chi tiết tất cả tài khoản"""
+        logger.info(f"[API] send-detailed-info called by user {session.get('user_id', 'unknown')}")
+        
+        if 'user_id' not in session:
+            logger.warning(f"[API] send-detailed-info: User not logged in")
+            return {'status': 'error', 'error': 'Chưa đăng nhập'}, 401
+        
+        try:
+            logger.info(f"[API] send-detailed-info: Processing for user {session['user_id']}")
+            
+            # Lấy config Rocket Chat
+            config = manager.get_rocket_chat_config(session['user_id'])
+            if not config:
+                logger.error(f"[API] send-detailed-info: No Rocket Chat config found for user {session['user_id']}")
+                return {'status': 'error', 'error': 'Chưa cấu hình Rocket Chat'}, 400
+            
+            logger.info(f"[API] send-detailed-info: Found config {config.id} for user {session['user_id']}")
+            
+            # Lấy danh sách tài khoản từ TẤT CẢ nguồn (giống như accounts page)
+            manual_acc_list = manager.list_accounts()
+            for acc in manual_acc_list:
+                if 'service' not in acc: acc['service'] = ''
+                acc['source'] = 'manual'
+            bitlaunch_apis = manager.list_bitlaunch_apis(session['user_id'])
+            bitlaunch_acc_list = []
+            for api in bitlaunch_apis:
+                acc = {
+                    'id': f"bitlaunch_{api['id']}", 'username': api['email'], 'service': 'BitLaunch',
+                    'expiry': None, 'balance': api.get('balance', 0), 'source': 'bitlaunch'
+                }
+                bitlaunch_acc_list.append(acc)
+            zingproxy_acc_list = manager.list_zingproxy_accounts(session['user_id'])
+            for acc in zingproxy_acc_list:
+                acc['source'] = 'zingproxy'
+                acc['username'] = acc.get('email', 'N/A')
+                acc['service'] = 'ZingProxy'
+                acc['expiry'] = None
+                acc['balance'] = acc.get('balance', 0)
+            cloudfly_apis = manager.list_cloudfly_apis(session['user_id'])
+            cloudfly_acc_list = []
+            for api in cloudfly_apis:
+                acc = {
+                    'id': f"cloudfly_{api['id']}", 'username': api['email'], 'service': 'CloudFly',
+                    'expiry': None, 'balance': api.get('balance', 0), 'source': 'cloudfly'
+                }
+                cloudfly_acc_list.append(acc)
+            all_accounts = manual_acc_list + bitlaunch_acc_list + zingproxy_acc_list + cloudfly_acc_list
+            logger.info(f"[API] send-detailed-info: Found {len(all_accounts)} total accounts for user {session['user_id']}:")
+            logger.info(f"[API]   - Manual: {len(manual_acc_list)}")
+            logger.info(f"[API]   - BitLaunch: {len(bitlaunch_acc_list)}")
+            logger.info(f"[API]   - ZingProxy: {len(zingproxy_acc_list)}")
+            logger.info(f"[API]   - CloudFly: {len(cloudfly_acc_list)}")
+            
+            # Gửi thông tin chi tiết
+            logger.info(f"[API] send-detailed-info: Calling send_detailed_account_info...")
+            success = send_detailed_account_info(
+                room_id=config.room_id, auth_token=config.auth_token, user_id=config.user_id_rocket,
+                accounts=all_accounts
+            )
+            
+            logger.info(f"[API] send-detailed-info: send_detailed_account_info result: {success}")
+            
+            if success:
+                logger.info(f"[API] send-detailed-info: Success for user {session['user_id']}")
+                return {'status': 'success', 'message': 'Đã gửi thông tin chi tiết tài khoản thành công!'}
+            else:
+                logger.error(f"[API] send-detailed-info: Failed for user {session['user_id']}")
+                return {'status': 'error', 'error': 'Gửi thông tin chi tiết thất bại'}
+            
+        except Exception as e:
+            logger.error(f"[API] send-detailed-info: Error for user {session.get('user_id', 'unknown')}: {e}")
+            import traceback
+            logger.error(f"[API] send-detailed-info: Traceback: {traceback.format_exc()}")
+            return {'status': 'error', 'error': f'Lỗi hệ thống: {str(e)}'}
 
     return app
 

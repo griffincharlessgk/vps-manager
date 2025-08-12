@@ -286,7 +286,7 @@ def start_scheduler():
         """Gửi thông báo hàng ngày đến Rocket Chat cho tất cả users có cấu hình"""
         try:
             from core.models import RocketChatConfig, User
-            from core.rocket_chat import send_daily_account_summary, send_account_expiry_notification
+            from core.rocket_chat import send_daily_account_summary, send_account_expiry_notification, send_detailed_account_info
             from core import manager
             
             logger.info("[Scheduler] Starting daily Rocket Chat notifications")
