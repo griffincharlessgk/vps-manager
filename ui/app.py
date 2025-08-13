@@ -2339,6 +2339,47 @@ def create_app():
             logger.error(f"[API] send-detailed-info: Traceback: {traceback.format_exc()}")
             return {'status': 'error', 'error': f'Lỗi hệ thống: {str(e)}'}
 
+    @app.route('/api/scheduler/status')
+    def api_scheduler_status():
+        """Kiểm tra trạng thái scheduler"""
+        if 'user_id' not in session:
+            return {'status': 'error', 'error': 'Chưa đăng nhập'}, 401
+        
+        try:
+            from core.scheduler import get_scheduler_status
+            scheduler_status = get_scheduler_status()
+            return scheduler_status
+        except Exception as e:
+            logger.error(f"Error getting scheduler status: {e}")
+            return {'status': 'error', 'error': str(e)}, 500
+
+    @app.route('/api/scheduler/restart', methods=['POST'])
+    def api_scheduler_restart():
+        """Khởi động lại scheduler (chỉ admin)"""
+        if not is_admin():
+            return {'status': 'error', 'error': 'Chỉ admin được phép khởi động lại scheduler'}, 403
+        
+        try:
+            from core.scheduler import get_scheduler
+            scheduler = get_scheduler()
+            
+            if scheduler.running:
+                scheduler.shutdown()
+                logger.info("[API] Scheduler shutdown")
+            
+            # Khởi động lại
+            from core.scheduler import start_scheduler
+            new_scheduler = start_scheduler()
+            
+            return {
+                'status': 'success',
+                'message': 'Scheduler đã được khởi động lại',
+                'jobs_count': len(new_scheduler.get_jobs())
+            }
+        except Exception as e:
+            logger.error(f"Error restarting scheduler: {e}")
+            return {'status': 'error', 'error': str(e)}, 500
+
     return app
 
 app = create_app()
@@ -2353,16 +2394,34 @@ app = create_app()
 #         db.session.add(admin)
 #         db.session.commit()
 
-# Khởi động scheduler ngay khi import module
-# start_scheduler()  # Comment lại để tránh khởi động trùng lặp
-
 # Khởi động scheduler khi app được tạo
 def init_app():
     """Khởi tạo app với scheduler"""
-    from core.scheduler import get_scheduler
-    scheduler = get_scheduler()  # Đảm bảo scheduler được khởi động
-    print(f"[Scheduler] Scheduler started with {len(scheduler.get_jobs())} jobs")
-    return app
+    try:
+        from core.scheduler import get_scheduler
+        print("🔄 Đang khởi động scheduler...")
+        
+        # Khởi động scheduler
+        scheduler = get_scheduler()
+        
+        # Kiểm tra trạng thái scheduler
+        if scheduler.running:
+            print(f"✅ Scheduler đã khởi động thành công với {len(scheduler.get_jobs())} jobs")
+            
+            # In danh sách jobs
+            print("📋 Danh sách jobs đang chạy:")
+            for job in scheduler.get_jobs():
+                print(f"   • {job.id}: {job.trigger}")
+        else:
+            print("❌ Scheduler không thể khởi động")
+            
+        return app
+        
+    except Exception as e:
+        print(f"❌ Lỗi khởi động scheduler: {e}")
+        import traceback
+        traceback.print_exc()
+        return app
 
 if __name__ == '__main__':
     app.run(debug=True) 

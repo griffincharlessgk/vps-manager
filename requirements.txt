@@ -9,4 +9,8 @@ cryptography>=41.0.0
 pybitlaunch>=1.0.0
 psycopg2-binary>=2.9.0
 flask-migrate>=4.0.0
-flask-cors>=4.0.0 
+flask-cors>=4.0.0
+
+# Additional dependencies for VPS Manager
+python-dateutil>=2.8.0
+pytz>=2023.3 
