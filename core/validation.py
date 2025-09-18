@@ -109,15 +109,8 @@ def validate_api_key(api_key: str) -> Tuple[bool, str]:
     return True, ""
 
 def validate_telegram_chat_id(chat_id: str) -> bool:
-    """Validate Telegram chat ID format"""
-    if not chat_id:
-        return True  # Optional field
-    # Telegram chat IDs are typically numbers, can be negative
-    try:
-        int(chat_id)
-        return True
-    except ValueError:
-        return False
+    """Deprecated: Telegram no longer supported."""
+    return False
 
 def validate_json_data(data: Dict[str, Any]) -> Dict[str, Any]:
     """Validate and sanitize JSON data"""

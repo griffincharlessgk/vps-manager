@@ -39,13 +39,22 @@
 <div class="row">
   <div class="col-12">
     <div class="card">
-      <div class="card-header">
+      <div class="card-header d-flex justify-content-between align-items-center">
         <h5 class="card-title mb-0">Chi tiết cảnh báo hết hạn</h5>
+        <div id="expiry-pagination-info" class="text-muted small">
+          <!-- Thông tin phân trang sẽ hiển thị ở đây -->
+        </div>
       </div>
       <div class="card-body">
         <div id="expiry-details">
           <!-- Chi tiết cảnh báo sẽ được load ở đây -->
         </div>
+        <!-- Phân trang -->
+        <nav aria-label="Phân trang cảnh báo hết hạn" id="expiry-pagination" style="display: none;">
+          <ul class="pagination justify-content-center" id="pagination-list">
+            <!-- Các nút trang sẽ được tạo động ở đây -->
+          </ul>
+        </nav>
       </div>
     </div>
   </div>
@@ -132,6 +141,11 @@ function formatDaysMessage(days) {
     }
 }
 
+// Biến global cho pagination
+let allExpiryItems = [];
+let currentPage = 1;
+const itemsPerPage = 6;
+
 // Hàm hiển thị chi tiết cảnh báo hết hạn
 function displayExpiryDetails() {
     const detailsContainer = document.getElementById('expiry-details');
@@ -141,14 +155,14 @@ function displayExpiryDetails() {
         fetch('/api/vps').then(r => r.json()),
         fetch('/api/accounts').then(r => r.json())
     ]).then(([vpsData, accData]) => {
-        let allItems = [];
+        allExpiryItems = [];
         
         // Thêm VPS vào danh sách
         vpsData.forEach(vps => {
             if (vps.expiry) {
                 const daysLeft = calculateDaysUntilExpiry(vps.expiry);
                 if (daysLeft !== null) {
-                    allItems.push({
+                    allExpiryItems.push({
                         type: 'VPS',
                         name: vps.name || vps.id,
                         service: vps.service || 'Unknown',
@@ -165,7 +179,7 @@ function displayExpiryDetails() {
             if (acc.expiry) {
                 const daysLeft = calculateDaysUntilExpiry(acc.expiry);
                 if (daysLeft !== null) {
-                    allItems.push({
+                    allExpiryItems.push({
                         type: 'Account',
                         name: acc.username || acc.id,
                         service: acc.service || 'Unknown',
@@ -177,37 +191,151 @@ function displayExpiryDetails() {
         });
         
         // Sắp xếp theo thời gian hết hạn (gần nhất trước)
-        allItems.sort((a, b) => a.daysLeft - b.daysLeft);
+        allExpiryItems.sort((a, b) => a.daysLeft - b.daysLeft);
         
-        // Hiển thị
-        if (allItems.length === 0) {
-            detailsContainer.innerHTML = '<div class="alert alert-success">✅ Không có items nào sắp hết hạn!</div>';
-        } else {
-            let html = '<div class="table-responsive"><table class="table table-striped">';
-            html += '<thead><tr><th>Loại</th><th>Tên</th><th>Service</th><th>IP</th><th>Tình trạng</th></tr></thead><tbody>';
-            
-            allItems.forEach(item => {
-                const daysMessage = formatDaysMessage(item.daysLeft);
-                const rowClass = item.daysLeft < 0 ? 'table-danger' : 
-                               item.daysLeft === 0 ? 'table-warning' : 
-                               item.daysLeft <= 3 ? 'table-info' : '';
-                
-                html += `<tr class="${rowClass}">
-                    <td><strong>${item.type}</strong></td>
-                    <td>${item.name}</td>
-                    <td>${item.service}</td>
-                    <td>${item.ip || 'N/A'}</td>
-                    <td><span class="badge bg-${item.daysLeft < 0 ? 'danger' : item.daysLeft === 0 ? 'warning' : item.daysLeft <= 3 ? 'info' : 'secondary'}">${daysMessage}</span></td>
-                </tr>`;
-            });
-            
-            html += '</tbody></table></div>';
-            detailsContainer.innerHTML = html;
-        }
+        // Reset về trang 1 và hiển thị
+        currentPage = 1;
+        renderExpiryTable();
     }).catch(error => {
         console.error('Error loading expiry details:', error);
         detailsContainer.innerHTML = '<div class="alert alert-danger">❌ Lỗi khi tải thông tin hết hạn</div>';
     });
+}
+
+// Hàm render bảng với pagination
+function renderExpiryTable() {
+    const detailsContainer = document.getElementById('expiry-details');
+    const paginationInfo = document.getElementById('expiry-pagination-info');
+    const pagination = document.getElementById('expiry-pagination');
+    
+    if (allExpiryItems.length === 0) {
+        detailsContainer.innerHTML = '<div class="alert alert-success">✅ Không có items nào sắp hết hạn!</div>';
+        pagination.style.display = 'none';
+        paginationInfo.innerHTML = '';
+        return;
+    }
+    
+    // Tính toán pagination
+    const totalPages = Math.ceil(allExpiryItems.length / itemsPerPage);
+    const startIndex = (currentPage - 1) * itemsPerPage;
+    const endIndex = Math.min(startIndex + itemsPerPage, allExpiryItems.length);
+    const currentItems = allExpiryItems.slice(startIndex, endIndex);
+    
+    // Hiển thị thông tin pagination
+    paginationInfo.innerHTML = `Trang ${currentPage}/${totalPages} - Hiển thị ${startIndex + 1}-${endIndex} trong ${allExpiryItems.length} items`;
+    
+    // Hiển thị bảng
+    let html = '<div class="table-responsive"><table class="table table-striped">';
+    html += '<thead><tr><th>Loại</th><th>Tên</th><th>Service</th><th>IP</th><th>Tình trạng</th></tr></thead><tbody>';
+    
+    currentItems.forEach(item => {
+        const daysMessage = formatDaysMessage(item.daysLeft);
+        const rowClass = item.daysLeft < 0 ? 'table-danger' : 
+                       item.daysLeft === 0 ? 'table-warning' : 
+                       item.daysLeft <= 3 ? 'table-info' : '';
+        
+        html += `<tr class="${rowClass}">
+            <td><strong>${item.type}</strong></td>
+            <td>${item.name}</td>
+            <td>${item.service}</td>
+            <td>${item.ip || 'N/A'}</td>
+            <td><span class="badge bg-${item.daysLeft < 0 ? 'danger' : item.daysLeft === 0 ? 'warning' : item.daysLeft <= 3 ? 'info' : 'secondary'}">${daysMessage}</span></td>
+        </tr>`;
+    });
+    
+    html += '</tbody></table></div>';
+    detailsContainer.innerHTML = html;
+    
+    // Hiển thị/ẩn nút phân trang
+    if (totalPages > 1) {
+        pagination.style.display = 'block';
+        createPaginationButtons(totalPages);
+    } else {
+        pagination.style.display = 'none';
+    }
+}
+
+// Hàm tạo nút phân trang
+function createPaginationButtons(totalPages) {
+    const paginationList = document.getElementById('pagination-list');
+    let html = '';
+    
+    // Nút << (Trang đầu)
+    html += `<li class="page-item ${currentPage === 1 ? 'disabled' : ''}">
+        <a class="page-link" href="#" onclick="goToPage(1)" ${currentPage === 1 ? 'tabindex="-1" aria-disabled="true"' : ''}>&laquo;&laquo;</a>
+    </li>`;
+    
+    // Nút < (Trang trước)
+    html += `<li class="page-item ${currentPage === 1 ? 'disabled' : ''}">
+        <a class="page-link" href="#" onclick="goToPage(${currentPage - 1})" ${currentPage === 1 ? 'tabindex="-1" aria-disabled="true"' : ''}>&laquo;</a>
+    </li>`;
+    
+    // Tính toán phạm vi trang hiển thị
+    let startPage = Math.max(1, currentPage - 2);
+    let endPage = Math.min(totalPages, currentPage + 2);
+    
+    // Điều chỉnh để luôn hiển thị 5 trang nếu có thể
+    if (endPage - startPage < 4) {
+        if (startPage === 1) {
+            endPage = Math.min(totalPages, startPage + 4);
+        } else if (endPage === totalPages) {
+            startPage = Math.max(1, endPage - 4);
+        }
+    }
+    
+    // Nút ... nếu cần
+    if (startPage > 1) {
+        html += `<li class="page-item disabled">
+            <span class="page-link">...</span>
+        </li>`;
+    }
+    
+    // Các nút trang số
+    for (let i = startPage; i <= endPage; i++) {
+        html += `<li class="page-item ${i === currentPage ? 'active' : ''}">
+            <a class="page-link" href="#" onclick="goToPage(${i})">${i}</a>
+        </li>`;
+    }
+    
+    // Nút ... nếu cần
+    if (endPage < totalPages) {
+        html += `<li class="page-item disabled">
+            <span class="page-link">...</span>
+        </li>`;
+    }
+    
+    // Nút > (Trang sau)
+    html += `<li class="page-item ${currentPage === totalPages ? 'disabled' : ''}">
+        <a class="page-link" href="#" onclick="goToPage(${currentPage + 1})" ${currentPage === totalPages ? 'tabindex="-1" aria-disabled="true"' : ''}>&raquo;</a>
+    </li>`;
+    
+    // Nút >> (Trang cuối)
+    html += `<li class="page-item ${currentPage === totalPages ? 'disabled' : ''}">
+        <a class="page-link" href="#" onclick="goToPage(${totalPages})" ${currentPage === totalPages ? 'tabindex="-1" aria-disabled="true"' : ''}>&raquo;&raquo;</a>
+    </li>`;
+    
+    paginationList.innerHTML = html;
+}
+
+// Hàm chuyển đến trang cụ thể
+function goToPage(page) {
+    const totalPages = Math.ceil(allExpiryItems.length / itemsPerPage);
+    
+    if (page >= 1 && page <= totalPages && page !== currentPage) {
+        currentPage = page;
+        renderExpiryTable();
+    }
+}
+
+// Hàm chuyển trang (giữ lại cho tương thích)
+function changePage(direction) {
+    const totalPages = Math.ceil(allExpiryItems.length / itemsPerPage);
+    const newPage = currentPage + direction;
+    
+    if (newPage >= 1 && newPage <= totalPages) {
+        currentPage = newPage;
+        renderExpiryTable();
+    }
 }
 
 // Cập nhật dữ liệu dashboard

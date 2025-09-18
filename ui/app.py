@@ -3,8 +3,9 @@ from core import manager
 import os
 from datetime import datetime, timedelta
 from core import notifier
-from core.scheduler import start_scheduler
-from core.models import db, User, VPS, Account, CloudFlyAPI
+# from core.scheduler import start_scheduler  # Replaced by Celery
+from core.celery_app import init_celery, get_celery
+from core.models import db, User, VPS, Account, CloudFlyAPI, RocketChatConfig
 from werkzeug.security import check_password_hash
 from core.api_clients.bitlaunch import BitLaunchClient, BitLaunchAPIError
 from core.api_clients.zingproxy import ZingProxyClient, ZingProxyAPIError
@@ -408,13 +409,7 @@ def create_app():
             logger.error(f"Error getting expiry warnings: {e}")
             return {'status': 'error', 'error': 'Lỗi khi lấy cảnh báo hết hạn'}, 500
 
-    @app.route('/api/notify-telegram', methods=['POST'])
-    def notify_telegram():
-        vps_list = manager.list_vps()
-        acc_list = manager.list_accounts()
-        notifier.notify_expiry_telegram_per_user(vps_list, item_type='VPS')
-        notifier.notify_expiry_telegram_per_user(acc_list, item_type='Account')
-        return {'status': 'sent'}
+
 
     @app.route('/api/send-all-notifications', methods=['POST'])
     def send_all_notifications():
@@ -428,21 +423,16 @@ def create_app():
             vps_list = manager.list_vps()
             acc_list = manager.list_accounts()
             
-            # Gửi thông báo cho tất cả users có telegram_chat_id
-            from core.models import User
-            users = User.query.filter(User.telegram_chat_id.isnot(None)).all()
-            
+            # Gửi thông báo qua Rocket.Chat cho tất cả users (force mode)
             sent_count = 0
-            for user in users:
-                try:
-                    # Gửi thông báo VPS
-                    notifier.notify_expiry_telegram_per_user(vps_list, item_type='VPS')
-                    # Gửi thông báo Accounts
-                    notifier.notify_expiry_telegram_per_user(acc_list, item_type='Account')
-                    sent_count += 1
-                except Exception as e:
-                    logger.error(f"Error sending notification to user {user.username}: {e}")
-                    continue
+            try:
+                # Gửi cảnh báo VPS và Account cho tất cả users ngay lập tức
+                notifier.notify_expiry_per_user(vps_list, item_type='VPS', force=True)
+                notifier.notify_expiry_per_user(acc_list, item_type='Account', force=True)
+                sent_count = 1  # Function handles all users internally
+                        
+            except Exception as e:
+                logger.error(f"Error sending notifications: {e}")
             
             log_security_event('all_notifications_sent', user_id=get_current_user().username, details=f'Sent to {sent_count} users')
             
@@ -475,29 +465,40 @@ def create_app():
         """Test gửi thông báo thông thường"""
         if 'user_id' not in session:
             return {'status': 'error', 'error': 'Chưa đăng nhập'}, 401
-        user = User.query.get(session['user_id'])
-        if not user.telegram_chat_id:
-            return {'status': 'error', 'error': 'Chưa cấu hình Chat ID Telegram'}, 400
         
         try:
-            from core.telegram_notify import send_telegram_message
+            from core.rocket_chat import send_formatted_notification_simple
             from core import manager
             
-            # Lấy dữ liệu test
+            # Lấy cấu hình Rocket.Chat
+            rocket_config = RocketChatConfig.query.first()
+            if not rocket_config:
+                return {'status': 'error', 'error': 'Chưa cấu hình Rocket.Chat'}, 400
+            
+            user = User.query.get(session['user_id'])
             vps_list = manager.list_vps()
             acc_list = manager.list_accounts()
             
-            # Gửi thông báo test
-            message = f"🧪 **TEST THÔNG BÁO**\n\n"
-            message += f"👤 **User:** {user.username}\n"
-            message += f"📅 **Thời gian:** {datetime.now().strftime('%d/%m/%Y %H:%M:%S')}\n\n"
-            message += f"📊 **Dữ liệu hiện tại:**\n"
-            message += f"• VPS: {len(vps_list)} máy chủ\n"
-            message += f"• Account: {len(acc_list)} tài khoản\n\n"
-            message += f"✅ Đây là thông báo test từ VPS Manager!"
+            # Tạo thông báo test
+            title = "🧪 TEST THÔNG BÁO"
+            text = f"**👤 User:** {user.username}\n"
+            text += f"**📅 Thời gian:** {datetime.now().strftime('%d/%m/%Y %H:%M:%S')}\n\n"
+            text += f"**📊 Dữ liệu hiện tại:**\n"
+            text += f"• VPS: {len(vps_list)} máy chủ\n"
+            text += f"• Account: {len(acc_list)} tài khoản\n\n"
+            text += f"✅ Đây là thông báo test từ VPS Manager!"
             
-            token = os.getenv('TELEGRAM_TOKEN')
-            if send_telegram_message(token, user.telegram_chat_id, message):
+            # Gửi thông báo
+            result = send_formatted_notification_simple(
+                room_id=rocket_config.room_id,
+                title=title,
+                text=text,
+                auth_token=rocket_config.auth_token,
+                user_id=rocket_config.user_id,
+                color="good"
+            )
+            
+            if result:
                 return {'status': 'success', 'message': 'Đã gửi thông báo test thành công'}
             else:
                 return {'status': 'error', 'error': 'Lỗi gửi thông báo'}, 500
@@ -1648,11 +1649,7 @@ def create_app():
                 return {'status': 'error', 'error': 'User không tồn tại'}, 404
             
             logger.info(f"[API] Testing daily summary for user: {user.username}")
-            logger.info(f"[API] User telegram_chat_id: {user.telegram_chat_id}")
             logger.info(f"[API] User notify_hour: {user.notify_hour}, notify_minute: {user.notify_minute}")
-            
-            if not user.telegram_chat_id:
-                return {'status': 'error', 'error': 'User chưa có Telegram Chat ID'}, 400
             
             # Gọi function send_daily_summary với force=True để test
             from core.notifier import send_daily_summary
@@ -2339,86 +2336,64 @@ def create_app():
             logger.error(f"[API] send-detailed-info: Traceback: {traceback.format_exc()}")
             return {'status': 'error', 'error': f'Lỗi hệ thống: {str(e)}'}
 
-    @app.route('/api/scheduler/status')
-    def api_scheduler_status():
-        """Kiểm tra trạng thái scheduler"""
-        if 'user_id' not in session:
-            return {'status': 'error', 'error': 'Chưa đăng nhập'}, 401
-        
-        try:
-            from core.scheduler import get_scheduler_status
-            scheduler_status = get_scheduler_status()
-            return scheduler_status
-        except Exception as e:
-            logger.error(f"Error getting scheduler status: {e}")
-            return {'status': 'error', 'error': str(e)}, 500
+    # Scheduler API routes removed - replaced by Celery
 
-    @app.route('/api/scheduler/restart', methods=['POST'])
-    def api_scheduler_restart():
-        """Khởi động lại scheduler (chỉ admin)"""
-        if not is_admin():
-            return {'status': 'error', 'error': 'Chỉ admin được phép khởi động lại scheduler'}, 403
-        
-        try:
-            from core.scheduler import get_scheduler
-            scheduler = get_scheduler()
-            
-            if scheduler.running:
-                scheduler.shutdown()
-                logger.info("[API] Scheduler shutdown")
-            
-            # Khởi động lại
-            from core.scheduler import start_scheduler
-            new_scheduler = start_scheduler()
-            
-            return {
-                'status': 'success',
-                'message': 'Scheduler đã được khởi động lại',
-                'jobs_count': len(new_scheduler.get_jobs())
-            }
-        except Exception as e:
-            logger.error(f"Error restarting scheduler: {e}")
-            return {'status': 'error', 'error': str(e)}, 500
-
+    # Đảm bảo database và bảng được tạo trước khi dùng
+    try:
+        # Tạo thư mục instance nếu chưa có (đối với SQLite)
+        if app.config['SQLALCHEMY_DATABASE_URI'].startswith('sqlite:///'):
+            instance_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'instance')
+            os.makedirs(instance_path, exist_ok=True)
+        with app.app_context():
+            db.create_all()
+            # Seed admin nếu chưa có
+            if not User.query.filter_by(username='admin').first():
+                admin = User(username='admin', role='admin')
+                admin.set_password('admin123')
+                db.session.add(admin)
+                db.session.commit()
+    except Exception as e:
+        logger.error(f"Database initialization error: {e}")
+    
     return app
 
 app = create_app()
 
-# Tạm thời comment để tránh lỗi database
-# with app.app_context():
-#     db.create_all()  # Đảm bảo luôn tạo schema mới trước khi truy vấn User
-#     # Seed user admin nếu chưa có
-#     if not User.query.filter_by(username='admin').first():
-#         admin = User(username='admin', role='admin')
-#         admin.set_password('123')  # Đặt mật khẩu admin là 123
-#         db.session.add(admin)
-#         db.session.commit()
-
 # Khởi động scheduler khi app được tạo
 def init_app():
-    """Khởi tạo app với scheduler"""
+    """Khởi tạo app với Celery"""
     try:
-        from core.scheduler import get_scheduler
-        print("🔄 Đang khởi động scheduler...")
+        print("🔄 Đang khởi động Celery...")
         
-        # Khởi động scheduler
-        scheduler = get_scheduler()
+        # Chỉ khởi động Celery trong tiến trình chính của Werkzeug reloader
+        is_reloader_child = os.environ.get('WERKZEUG_RUN_MAIN') == 'true'
+        if (app.debug and not is_reloader_child):
+            # Bỏ qua ở tiến trình cha để tránh khởi động 2 lần khi debug
+            return app
         
-        # Kiểm tra trạng thái scheduler
-        if scheduler.running:
-            print(f"✅ Scheduler đã khởi động thành công với {len(scheduler.get_jobs())} jobs")
+        # Khởi động Celery
+        celery_app = init_celery(app)
+        
+        # Kiểm tra trạng thái Celery
+        if celery_app:
+            print(f"✅ Celery đã khởi động thành công")
+            print(f"📋 Broker: {celery_app.conf.broker_url}")
+            print(f"📋 Backend: {celery_app.conf.result_backend}")
             
-            # In danh sách jobs
-            print("📋 Danh sách jobs đang chạy:")
-            for job in scheduler.get_jobs():
-                print(f"   • {job.id}: {job.trigger}")
+            # In danh sách scheduled tasks
+            beat_schedule = celery_app.conf.beat_schedule
+            if beat_schedule:
+                print(f"📅 Scheduled tasks: {len(beat_schedule)} tasks")
+                for task_name, task_config in beat_schedule.items():
+                    schedule = task_config.get('schedule', 'Unknown')
+                    print(f"   • {task_name}: {schedule}")
         else:
-            print("❌ Scheduler không thể khởi động")
+            print("❌ Celery không thể khởi động")
             
         return app
         
     except Exception as e:
-        print(f"❌ Lỗi khởi động scheduler: {e}")
+        print(f"❌ Lỗi khởi động Celery: {e}")
         import traceback
         traceback.print_exc()
         return app

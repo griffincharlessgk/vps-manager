@@ -11,6 +11,11 @@ psycopg2-binary>=2.9.0
 flask-migrate>=4.0.0
 flask-cors>=4.0.0
 
+# Celery for task scheduling
+celery>=5.3.0
+redis>=4.5.0
+flower>=2.0.0
+
 # Additional dependencies for VPS Manager
 python-dateutil>=2.8.0
 pytz>=2023.3 

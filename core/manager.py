@@ -3,7 +3,7 @@ from core.models import db, VPS, Account, BitLaunchAPI, BitLaunchVPS, ZingProxyA
 from core.api_clients.bitlaunch import BitLaunchClient, BitLaunchAPIError
 from core.api_clients.zingproxy import ZingProxyClient, ZingProxyAPIError
 from core.api_clients.cloudfly import CloudFlyClient, CloudFlyAPIError
-from core.notifier import notify_expiry_telegram_per_user
+# Telegram notifier deprecated; keep imports minimal
 import logging
 from datetime import datetime, timedelta
 
@@ -867,4 +867,143 @@ def delete_rocket_chat_config(config_id: int) -> None:
 def list_rocket_chat_configs() -> List[dict]:
     """Lấy danh sách tất cả cấu hình Rocket Chat"""
     configs = RocketChatConfig.query.filter_by(is_active=True).all()
-    return [rocket_chat_config_to_dict(config) for config in configs] 
+    return [rocket_chat_config_to_dict(config) for config in configs]
+
+# Celery task helper methods
+def get_bitlaunch_apis_needing_update() -> List[BitLaunchAPI]:
+    """Get BitLaunch APIs that need updating"""
+    return BitLaunchAPI.query.filter_by(is_active=True).all()
+
+def get_zingproxy_apis_needing_update() -> List[ZingProxyAccount]:
+    """Get ZingProxy APIs that need updating"""
+    return ZingProxyAccount.query.filter_by(is_active=True).all()
+
+def get_cloudfly_apis_needing_update() -> List[CloudFlyAPI]:
+    """Get CloudFly APIs that need updating"""
+    return CloudFlyAPI.query.filter_by(is_active=True).all()
+
+def update_bitlaunch_api_balance(api_id: int, balance: float) -> None:
+    """Update BitLaunch API balance"""
+    api = BitLaunchAPI.query.get(api_id)
+    if api:
+        api.balance = balance
+        api.last_updated = datetime.utcnow()
+        db.session.commit()
+
+def update_zingproxy_api_balance(api_id: int, balance: float) -> None:
+    """Update ZingProxy API balance"""
+    api = ZingProxyAccount.query.get(api_id)
+    if api:
+        api.balance = balance
+        api.last_updated = datetime.utcnow()
+        db.session.commit()
+
+def update_cloudfly_api_balance(api_id: int, balance: float) -> None:
+    """Update CloudFly API balance"""
+    api = CloudFlyAPI.query.get(api_id)
+    if api:
+        api.balance = balance
+        api.last_updated = datetime.utcnow()
+        db.session.commit()
+
+def update_bitlaunch_vps(api_id: int, server_data: dict) -> None:
+    """Update BitLaunch VPS information"""
+    try:
+        # Check if VPS already exists
+        existing_vps = BitLaunchVPS.query.filter_by(
+            api_id=api_id,
+            server_id=str(server_data.get('id', ''))
+        ).first()
+        
+        if existing_vps:
+            # Update existing VPS
+            existing_vps.name = server_data.get('name', '')
+            existing_vps.status = server_data.get('status', '')
+            existing_vps.ip_address = server_data.get('ip_address', '')
+            existing_vps.location = server_data.get('location', '')
+            existing_vps.plan = server_data.get('plan', '')
+            existing_vps.last_updated = datetime.utcnow()
+        else:
+            # Create new VPS
+            new_vps = BitLaunchVPS(
+                api_id=api_id,
+                server_id=str(server_data.get('id', '')),
+                name=server_data.get('name', ''),
+                status=server_data.get('status', ''),
+                ip_address=server_data.get('ip_address', ''),
+                location=server_data.get('location', ''),
+                plan=server_data.get('plan', ''),
+                created_at=datetime.utcnow(),
+                last_updated=datetime.utcnow()
+            )
+            db.session.add(new_vps)
+        
+        db.session.commit()
+    except Exception as e:
+        logger.error(f"Error updating BitLaunch VPS: {str(e)}")
+        db.session.rollback()
+
+def update_cloudfly_vps(api_id: int, instance_data: dict) -> None:
+    """Update CloudFly VPS information"""
+    try:
+        # Check if VPS already exists
+        existing_vps = CloudFlyVPS.query.filter_by(
+            api_id=api_id,
+            instance_id=str(instance_data.get('id', ''))
+        ).first()
+        
+        if existing_vps:
+            # Update existing VPS
+            existing_vps.name = instance_data.get('name', '')
+            existing_vps.status = instance_data.get('status', '')
+            existing_vps.ip_address = instance_data.get('ip_address', '')
+            existing_vps.location = instance_data.get('location', '')
+            existing_vps.plan = instance_data.get('plan', '')
+            existing_vps.last_updated = datetime.utcnow()
+        else:
+            # Create new VPS
+            new_vps = CloudFlyVPS(
+                api_id=api_id,
+                instance_id=str(instance_data.get('id', '')),
+                name=instance_data.get('name', ''),
+                status=instance_data.get('status', ''),
+                ip_address=instance_data.get('ip_address', ''),
+                location=instance_data.get('location', ''),
+                plan=instance_data.get('plan', ''),
+                created_at=datetime.utcnow(),
+                last_updated=datetime.utcnow()
+            )
+            db.session.add(new_vps)
+        
+        db.session.commit()
+    except Exception as e:
+        logger.error(f"Error updating CloudFly VPS: {str(e)}")
+        db.session.rollback()
+
+def sync_zingproxy_proxies(api_id: int, proxies_data: List[dict]) -> None:
+    """Sync ZingProxy proxies to database"""
+    try:
+        # Clear existing proxies for this API
+        ZingProxy.query.filter_by(api_id=api_id).delete()
+        
+        # Add new proxies
+        for proxy_data in proxies_data:
+            new_proxy = ZingProxy(
+                api_id=api_id,
+                proxy_id=str(proxy_data.get('id', '')),
+                username=proxy_data.get('username', ''),
+                password=proxy_data.get('password', ''),
+                host=proxy_data.get('host', ''),
+                port=proxy_data.get('port', 0),
+                location=proxy_data.get('location', ''),
+                status=proxy_data.get('status', ''),
+                created_at=datetime.utcnow(),
+                last_updated=datetime.utcnow()
+            )
+            db.session.add(new_proxy)
+        
+        db.session.commit()
+        logger.info(f"Synced {len(proxies_data)} proxies for ZingProxy API {api_id}")
+    except Exception as e:
+        logger.error(f"Error syncing ZingProxy proxies: {str(e)}")
+        db.session.rollback() 

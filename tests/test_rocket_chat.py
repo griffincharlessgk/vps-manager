@@ -46,7 +46,7 @@ def test_rocket_chat_client_init():
     client = RocketChatClient('test_token', 'test_user_id')
     assert client.auth_token == 'test_token'
     assert client.user_id == 'test_user_id'
-    assert client.base_url == 'https://rocket.int.team/api/v1'
+    assert client.base_url == 'https://rocket.int.team'
 
 @patch('requests.post')
 def test_send_message_success(mock_post):
@@ -57,7 +57,8 @@ def test_send_message_success(mock_post):
     
     client = RocketChatClient('test_token', 'test_user_id')
     result = client.send_message('test_room', 'Test message')
-    assert result is True
+    assert isinstance(result, dict)
+    assert result.get('success') is True
 
 @patch('requests.post')
 def test_send_message_error(mock_post):
@@ -67,8 +68,8 @@ def test_send_message_error(mock_post):
     mock_post.return_value = mock_response
     
     client = RocketChatClient('test_token', 'test_user_id')
-    result = client.send_message('test_room', 'Test message')
-    assert result is False
+    with pytest.raises(Exception):
+        client.send_message('test_room', 'Test message')
 
 @patch('requests.post')
 def test_send_formatted_message_success(mock_post):
@@ -84,7 +85,8 @@ def test_send_formatted_message_success(mock_post):
         'Test Text', 
         'good'
     )
-    assert result is True
+    assert isinstance(result, dict)
+    assert result.get('success') is True
 
 @patch('requests.get')
 def test_get_channels_success(mock_get):

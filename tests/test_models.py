@@ -215,12 +215,11 @@ def test_user_role_validation():
     user = User(username='default')
     assert user.role is None
 
-def test_user_telegram_settings():
+def test_user_telegram_settings_removed():
     user = User(username='testuser', role='user')
-    
-    # Test telegram_chat_id
-    user.telegram_chat_id = '123456789'
-    assert user.telegram_chat_id == '123456789'
+    # Thuộc tính telegram_chat_id không còn lưu trữ
+    user.telegram_chat_id = '123456789'  # ignored
+    assert user.telegram_chat_id is None
     
     # Test notify_days
     user.notify_days = 7

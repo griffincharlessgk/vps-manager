@@ -259,13 +259,13 @@ def test_validate_vps_data_edge_cases():
     result = validate_vps_data(data)
     assert result['ip'] == '127.0.0.1'
     
-    # Test với service rỗng
+    # Test với service rỗng (expect ValidationError)
     data['service'] = ''
-    result = validate_vps_data(data)
-    assert result['service'] == ''
+    with pytest.raises(ValidationError):
+        validate_vps_data(data)
 
 def test_validate_account_data_edge_cases():
-    # Test với service rỗng
+    # Test với service rỗng (expect ValidationError)
     data = {
         'id': 'acc1',
         'service': '',
@@ -274,8 +274,8 @@ def test_validate_account_data_edge_cases():
         'expiry': '2024-12-31'
     }
     
-    result = validate_account_data(data)
-    assert result['service'] == ''
+    with pytest.raises(ValidationError):
+        validate_account_data(data)
     
     # Test với username có dấu gạch dưới
     data['username'] = 'test_user@example.com'

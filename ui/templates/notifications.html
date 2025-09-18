@@ -28,18 +28,15 @@
                 <div class="col-md-6">
                     <div class="card">
                         <div class="card-header">
-                            <h5 class="card-title mb-0">📱 Cài đặt Telegram</h5>
+                            <h5 class="card-title mb-0">💬 Cấu hình Rocket.Chat</h5>
                         </div>
                         <div class="card-body">
-                            <div class="mb-3">
-                                <label for="telegram-chat-id" class="form-label">Chat ID Telegram</label>
-                                <input type="text" class="form-control" id="telegram-chat-id" >
-                                <div class="form-text">Gửi tin nhắn cho @userinfobot để lấy Chat ID</div>
+                            <p class="mb-2">Cấu hình Rocket.Chat tại mục Rocket.Chat trong menu để nhận thông báo.</p>
+                            <div class="d-flex flex-wrap gap-2">
+                        
+                                <button class="btn btn-info" onclick="testDailySummary()">📊 Test Daily Summary</button>
+                                <button class="btn btn-primary" onclick="sendDetailedInfo()">📑 Gửi thông tin chi tiết</button>
                             </div>
-                            <button class="btn btn-primary" onclick="saveTelegramChatId()">Lưu Chat ID</button>
-                            <button class="btn btn-success ms-2" onclick="testNotification()">✔ Test thông báo</button>
-                            <button class="btn btn-info ms-2" onclick="testDailySummary()">📊 Test Daily Summary</button>
-                            <!-- <button class="btn btn-warning ms-2" onclick="testTelegramSimple()">🔧 Test Telegram Simple</button> -->
                         </div>
                     </div>
                 </div>
@@ -158,7 +155,6 @@
 // Load settings khi trang load
 document.addEventListener('DOMContentLoaded', function() {
     loadNotifySettings();
-    loadTelegramSettings();
     loadNotifyCountdown();
     loadExpiryWarnings();
 });
@@ -179,19 +175,6 @@ async function loadNotifySettings() {
         }
     } catch (error) {
         console.error('Lỗi load settings:', error);
-    }
-}
-
-// Load cài đặt Telegram
-async function loadTelegramSettings() {
-    try {
-        const res = await fetch('/api/telegram-chat-id');
-        const data = await res.json();
-        if (data.status === 'success') {
-            document.getElementById('telegram-chat-id').value = data.telegram_chat_id || '';
-        }
-    } catch (error) {
-        console.error('Lỗi load Telegram settings:', error);
     }
 }
 
@@ -232,49 +215,7 @@ document.getElementById('notify-settings-form').addEventListener('submit', async
     }
 });
 
-// Lưu Chat ID Telegram
-async function saveTelegramChatId() {
-    const chatId = document.getElementById('telegram-chat-id').value.trim();
-    
-    try {
-        const res = await fetch('/api/telegram-chat-id', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({telegram_chat_id: chatId})
-        });
-        
-        const data = await res.json();
-        if (data.status === 'success') {
-            alert('✅ Đã lưu Chat ID Telegram!');
-        } else {
-            alert('❌ Lỗi lưu Chat ID!');
-        }
-    } catch (error) {
-        console.error('Lỗi:', error);
-        alert('❌ Lỗi lưu Chat ID!');
-    }
-}
 
-// Test thông báo
-async function testNotification() {
-    try {
-        const res = await fetch('/api/test-notification', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({})
-        });
-        
-        const data = await res.json();
-        if (data.status === 'success') {
-            alert('✅ Đã gửi thông báo test!');
-        } else {
-            alert('❌ Lỗi gửi thông báo: ' + data.error);
-        }
-    } catch (error) {
-        console.error('Lỗi:', error);
-        alert('❌ Lỗi gửi thông báo!');
-    }
-}
 
 // Test Daily Summary
 async function testDailySummary() {
@@ -297,27 +238,25 @@ async function testDailySummary() {
     }
 }
 
-// Test Telegram Simple
-// async function testTelegramSimple() {
-//     try {
-//         const res = await fetch('/api/test-telegram-simple', {
-//             method: 'POST',
-//             headers: {'Content-Type': 'application/json'},
-//             body: JSON.stringify({})
-//         });
-        
-//         const data = await res.json();
-//         if (data.status === 'success') {
-//             alert('✅ Đã gửi test message đơn giản!');
-//         } else {
-//             alert('❌ Lỗi gửi test message đơn giản: ' + data.error);
-//         }
-//     } catch (error) {
-//         console.error('Lỗi:', error);
-//         alert('❌ Lỗi gửi test message đơn giản!');
-//     }
-// }
-
+// Gửi thông tin chi tiết tài khoản qua Rocket.Chat
+async function sendDetailedInfo() {
+    try {
+        const res = await fetch('/api/rocket-chat/send-detailed-info', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({})
+        });
+        const data = await res.json();
+        if (data.status === 'success') {
+            alert('✅ Đã gửi thông tin chi tiết thành công!');
+        } else {
+            alert('❌ Lỗi gửi thông tin chi tiết: ' + (data.error || 'Không rõ lỗi'));
+        }
+    } catch (error) {
+        console.error('Lỗi gửi thông tin chi tiết:', error);
+        alert('❌ Lỗi gửi thông tin chi tiết!');
+    }
+}
 // Load countdown
 async function loadNotifyCountdown() {
     try {

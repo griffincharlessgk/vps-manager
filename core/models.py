@@ -3,6 +3,7 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from core.encryption import encrypt_sensitive_data, decrypt_sensitive_data
 from datetime import datetime
 import re
+from core.validation import validate_email as validate_email_util
 
 db = SQLAlchemy()
 
@@ -15,7 +16,6 @@ class User(db.Model):
     notify_days = db.Column(db.Integer, nullable=True, default=3)  # Số ngày trước khi hết hạn để thông báo
     notify_hour = db.Column(db.Integer, nullable=True, default=8)  # Giờ gửi thông báo (0-23)
     notify_minute = db.Column(db.Integer, nullable=True, default=0)  # Phút gửi thông báo (0-59)
-    telegram_chat_id = db.Column(db.String, nullable=True)  # Chat ID Telegram riêng
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -35,6 +35,16 @@ class User(db.Model):
         if not re.match(r'^[a-zA-Z0-9_]+$', username):
             return False, "Username can only contain letters, numbers, and underscores"
         return True, ""
+
+    # Giữ tương thích ngược với mã cũ: thuộc tính telegram_chat_id không còn trong DB
+    @property
+    def telegram_chat_id(self):
+        return None
+
+    @telegram_chat_id.setter
+    def telegram_chat_id(self, value):
+        # Bỏ qua thiết lập vì chúng ta không còn lưu trường này
+        pass
 
 class BitLaunchAPI(db.Model):
     __tablename__ = 'bitlaunch_apis'
@@ -63,8 +73,7 @@ class BitLaunchAPI(db.Model):
     @staticmethod
     def validate_email(email):
         """Validate email format"""
-        pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
-        return bool(re.match(pattern, email))
+        return validate_email_util(email)
 
 class BitLaunchVPS(db.Model):
     __tablename__ = 'bitlaunch_vps'
@@ -233,8 +242,7 @@ class CloudFlyAPI(db.Model):
     @staticmethod
     def validate_email(email):
         """Validate email format"""
-        pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
-        return bool(re.match(pattern, email))
+        return validate_email_util(email)
 
 class CloudFlyVPS(db.Model):
     __tablename__ = 'cloudfly_vps'

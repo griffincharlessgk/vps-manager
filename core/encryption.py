@@ -13,30 +13,50 @@ class EncryptionManager:
         self.cipher_suite = Fernet(self.key)
     
     def _get_or_create_key(self):
-        """Lấy hoặc tạo encryption key từ environment variable"""
-        key = os.getenv('ENCRYPTION_KEY')
-        if not key:
-            # Tạo key mới nếu chưa có
+        """Lấy hoặc tạo encryption key từ environment variable và chuẩn hóa format.
+        - Hỗ trợ các trường hợp: key base64 44 ký tự, key base64 thiếu padding, hoặc bytes 32 chiều dài.
+        - Nếu không hợp lệ: tự sinh key mới.
+        - Luôn set lại os.environ['ENCRYPTION_KEY'] bằng key chuẩn hóa để lần sau không cảnh báo.
+        """
+        raw = os.getenv('ENCRYPTION_KEY')
+        key: bytes
+        if not raw:
             key = Fernet.generate_key()
-            logger.warning("ENCRYPTION_KEY not found in environment. Generated new key.")
-            logger.warning("Please set ENCRYPTION_KEY environment variable for production.")
+            logger.warning("ENCRYPTION_KEY not found. Generated a new key for this runtime.")
+            logger.warning("Set ENCRYPTION_KEY in environment for persistence.")
         else:
-            # Nếu key được cung cấp, đảm bảo nó đúng format
             try:
-                # Thử decode để kiểm tra format
-                if isinstance(key, str):
-                    # Nếu là string, thử decode base64
-                    key_bytes = base64.urlsafe_b64decode(key + '=' * (4 - len(key) % 4))
-                    if len(key_bytes) != 32:
-                        raise ValueError("Key must be 32 bytes when decoded")
-                    key = base64.urlsafe_b64encode(key_bytes)
+                if isinstance(raw, bytes):
+                    # If bytes provided: if already 44-char base64 bytes, try decode
+                    try:
+                        decoded = base64.urlsafe_b64decode(raw)
+                        if len(decoded) != 32:
+                            raise ValueError("decoded length != 32 bytes")
+                        key = base64.urlsafe_b64encode(decoded)
+                    except Exception:
+                        # Treat as raw 32 bytes
+                        if len(raw) == 32:
+                            key = base64.urlsafe_b64encode(raw)
+                        else:
+                            raise ValueError("bytes key must be 32 bytes or base64 of 32 bytes")
                 else:
-                    # Nếu đã là bytes, encode thành base64
-                    key = base64.urlsafe_b64encode(key)
+                    # str input: normalize padding and decode
+                    s = raw.strip()
+                    pad = '=' * ((4 - (len(s) % 4)) % 4)
+                    decoded = base64.urlsafe_b64decode(s + pad)
+                    if len(decoded) != 32:
+                        raise ValueError("decoded length != 32 bytes")
+                    key = base64.urlsafe_b64encode(decoded)
+                if raw != key and isinstance(raw, (str, bytes)):
+                    logger.info("Normalized ENCRYPTION_KEY format for this runtime.")
             except Exception as e:
                 logger.warning(f"Invalid ENCRYPTION_KEY format: {e}. Generating new key.")
                 key = Fernet.generate_key()
-        
+        # Persist normalized key in environment for current process
+        try:
+            os.environ['ENCRYPTION_KEY'] = key.decode() if isinstance(key, (bytes, bytearray)) else str(key)
+        except Exception:
+            pass
         return key
     
     def encrypt(self, data: str) -> str:

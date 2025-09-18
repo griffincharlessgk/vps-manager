@@ -1,0 +1,11 @@
+# VPS Manager - Production Keys
+# Generated on: 2025-09-17 14:51:16
+
+SECRET_KEY=kN1d9uD-wmGI2RU7hdFf-js2AQvnimafaIDlyz-3w5Y
+ENCRYPTION_KEY=vX9wbEGwZD3VJw18OtyEACIzzPTjx9gnKfYwQCitDZs=
+DB_PASSWORD==CZQQ_O[!-K*
+
+# PostgreSQL Setup Commands:
+# CREATE USER vps_user WITH PASSWORD '=CZQQ_O[!-K*';
+# CREATE DATABASE vps_manager OWNER vps_user;
+# GRANT ALL PRIVILEGES ON DATABASE vps_manager TO vps_user;

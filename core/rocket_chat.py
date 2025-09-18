@@ -1,9 +1,13 @@
 import requests
+import urllib3
 import logging
 from typing import Dict, List, Optional
 from datetime import datetime
 
 logger = logging.getLogger(__name__)
+
+# Suppress TLS warnings for verify=False in requests (test/dev environments)
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 class RocketChatError(Exception):
     """Custom exception for Rocket Chat API errors"""
@@ -14,11 +18,11 @@ class RocketChatClient:
     
     def __init__(self, auth_token: str, user_id: str, base_url: str = "https://rocket.int.team"):
         self.auth_token = auth_token
-        self.user_id = user_id
+        self.user_id = str(user_id)  # Ensure user_id is string
         self.base_url = base_url.rstrip('/')
         self.headers = {
             "X-Auth-Token": auth_token,
-            "X-User-Id": user_id,
+            "X-User-Id": str(user_id),  # Ensure user_id is string
             "Content-Type": "application/json"
         }
     
@@ -93,7 +97,7 @@ def send_formatted_notification_simple(
         base_url = "https://rocket.int.team"
         headers = {
             "X-Auth-Token": auth_token,
-            "X-User-Id": user_id,
+            "X-User-Id": str(user_id),  # Ensure user_id is string
             "Content-Type": "application/json"
         }
         
@@ -361,11 +365,6 @@ def send_detailed_account_info(
         zingproxy_accounts = [acc for acc in accounts if acc.get('source') == 'zingproxy']
         cloudfly_accounts = [acc for acc in accounts if acc.get('source') == 'cloudfly']
         
-        # Tính tổng balance
-        total_balance = 0
-        for account in accounts:
-            if account.get('source') in ['bitlaunch', 'zingproxy', 'cloudfly']:
-                total_balance += account.get('balance', 0)
         
         # Tạo tiêu đề
         title = f"📊 Thông tin chi tiết tài khoản - {datetime.now().strftime('%d/%m/%Y %H:%M')}"
@@ -377,13 +376,6 @@ def send_detailed_account_info(
         text += f"   • 🚀 BitLaunch: {len(bitlaunch_accounts)}\n"
         text += f"   • 🌐 ZingProxy: {len(zingproxy_accounts)}\n"
         text += f"   • ☁️ CloudFly: {len(cloudfly_accounts)}\n\n"
-        
-        # Thông tin balance tổng hợp
-        if total_balance > 0:
-            text += f"💰 **Tổng balance:** ${total_balance:,.2f}\n"
-            text += f"   • BitLaunch: ${sum([acc.get('balance', 0) for acc in bitlaunch_accounts]):,.2f}\n"
-            text += f"   • ZingProxy: ${sum([acc.get('balance', 0) for acc in zingproxy_accounts]):,.2f}\n"
-            text += f"   • CloudFly: ${sum([acc.get('balance', 0) for acc in cloudfly_accounts]):,.2f}\n\n"
         
         # Chi tiết tài khoản thủ công
         if manual_accounts:
