@@ -680,14 +680,16 @@ def create_app():
             logger.error(f"Error in test RocketChat notification: {e}")
             return {'status': 'error', 'error': 'Lỗi hệ thống'}, 500
 
-    @app.route('/api/test-rocketchat-daily-summary', methods=['POST'])
-    def test_rocketchat_daily_summary():
+    @app.route('/api/send-account-details', methods=['POST'])
+    def send_account_details():
+        """Gửi thông tin chi tiết tài khoản qua RocketChat"""
         if not is_authenticated():
             return {'status': 'error', 'error': 'Chưa đăng nhập'}, 401
         
         try:
             from core.models import RocketChatConfig
-            from core import notifier
+            from core.rocket_chat import send_detailed_account_info
+            from core import manager
             
             user = get_current_user()
             config = RocketChatConfig.query.filter_by(user_id=user.id, is_active=True).first()
@@ -695,13 +697,150 @@ def create_app():
             if not config:
                 return {'status': 'error', 'error': 'Chưa cấu hình RocketChat'}, 400
             
-            # Gửi daily summary test
-            notifier.send_daily_summary_rocketchat(user, config)
+            # Lấy danh sách tài khoản từ tất cả nguồn
+            manual_acc_list = manager.list_accounts()
+            for acc in manual_acc_list:
+                if 'service' not in acc:
+                    acc['service'] = ''
+                acc['source'] = 'manual'
             
-            return {'status': 'success', 'message': 'Test daily summary sent successfully'}
+            # Tài khoản từ BitLaunch
+            bitlaunch_apis = manager.list_bitlaunch_apis(user.id)
+            bitlaunch_acc_list = []
+            for api in bitlaunch_apis:
+                acc = {
+                    'id': f"bitlaunch_{api['id']}",
+                    'username': api['email'],
+                    'service': 'BitLaunch',
+                    'expiry': None,
+                    'balance': api.get('balance', 0),
+                    'source': 'bitlaunch'
+                }
+                bitlaunch_acc_list.append(acc)
+            
+            # Tài khoản từ ZingProxy
+            zingproxy_acc_list = manager.list_zingproxy_accounts(user.id)
+            for acc in zingproxy_acc_list:
+                acc['source'] = 'zingproxy'
+                acc['username'] = acc.get('email', 'N/A')
+                acc['service'] = 'ZingProxy'
+                acc['expiry'] = None
+                acc['balance'] = acc.get('balance', 0)
+            
+            # Tài khoản từ CloudFly
+            cloudfly_apis = manager.list_cloudfly_apis(user.id)
+            cloudfly_acc_list = []
+            for api in cloudfly_apis:
+                acc = {
+                    'id': f"cloudfly_{api['id']}",
+                    'username': api['email'],
+                    'service': 'CloudFly',
+                    'expiry': None,
+                    'balance': api.get('balance', 0),
+                    'source': 'cloudfly'
+                }
+                cloudfly_acc_list.append(acc)
+            
+            # Kết hợp tất cả tài khoản
+            all_accounts = manual_acc_list + bitlaunch_acc_list + zingproxy_acc_list + cloudfly_acc_list
+            
+            # Gửi thông tin chi tiết tài khoản
+            success = send_detailed_account_info(
+                room_id=config.room_id,
+                auth_token=config.auth_token,
+                user_id=config.user_id_rocket,
+                accounts=all_accounts
+            )
+            
+            if success:
+                return {'status': 'success', 'message': 'Đã gửi thông tin chi tiết tài khoản thành công'}
+            else:
+                return {'status': 'error', 'error': 'Gửi thông tin chi tiết tài khoản thất bại'}
                 
         except Exception as e:
-            logger.error(f"Error in test RocketChat daily summary: {e}")
+            logger.error(f"Error sending account details: {e}")
+            return {'status': 'error', 'error': 'Lỗi hệ thống'}, 500
+
+    @app.route('/api/send-expiry-notifications', methods=['POST'])
+    def send_expiry_notifications():
+        """Gửi thông báo tài khoản sắp hết hạn qua RocketChat"""
+        if not is_authenticated():
+            return {'status': 'error', 'error': 'Chưa đăng nhập'}, 401
+        
+        try:
+            from core.models import RocketChatConfig
+            from core.rocket_chat import send_account_expiry_notification
+            from core import manager
+            
+            user = get_current_user()
+            config = RocketChatConfig.query.filter_by(user_id=user.id, is_active=True).first()
+            
+            if not config:
+                return {'status': 'error', 'error': 'Chưa cấu hình RocketChat'}, 400
+            
+            # Lấy danh sách tài khoản từ tất cả nguồn
+            manual_acc_list = manager.list_accounts()
+            for acc in manual_acc_list:
+                if 'service' not in acc:
+                    acc['service'] = ''
+                acc['source'] = 'manual'
+            
+            # Tài khoản từ BitLaunch
+            bitlaunch_apis = manager.list_bitlaunch_apis(user.id)
+            bitlaunch_acc_list = []
+            for api in bitlaunch_apis:
+                acc = {
+                    'id': f"bitlaunch_{api['id']}",
+                    'username': api['email'],
+                    'service': 'BitLaunch',
+                    'expiry': None,
+                    'balance': api.get('balance', 0),
+                    'source': 'bitlaunch'
+                }
+                bitlaunch_acc_list.append(acc)
+            
+            # Tài khoản từ ZingProxy
+            zingproxy_acc_list = manager.list_zingproxy_accounts(user.id)
+            for acc in zingproxy_acc_list:
+                acc['source'] = 'zingproxy'
+                acc['username'] = acc.get('email', 'N/A')
+                acc['service'] = 'ZingProxy'
+                acc['expiry'] = None
+                acc['balance'] = acc.get('balance', 0)
+            
+            # Tài khoản từ CloudFly
+            cloudfly_apis = manager.list_cloudfly_apis(user.id)
+            cloudfly_acc_list = []
+            for api in cloudfly_apis:
+                acc = {
+                    'id': f"cloudfly_{api['id']}",
+                    'username': api['email'],
+                    'service': 'CloudFly',
+                    'expiry': None,
+                    'balance': api.get('balance', 0),
+                    'source': 'cloudfly'
+                }
+                cloudfly_acc_list.append(acc)
+            
+            # Kết hợp tất cả tài khoản
+            all_accounts = manual_acc_list + bitlaunch_acc_list + zingproxy_acc_list + cloudfly_acc_list
+            
+            # Gửi thông báo tài khoản sắp hết hạn
+            success = send_account_expiry_notification(
+                room_id=config.room_id,
+                auth_token=config.auth_token,
+                user_id=config.user_id_rocket,
+                accounts=all_accounts,
+                warning_days=user.notify_days or 7
+            )
+            
+            if success:
+                return {'status': 'success', 'message': 'Đã gửi thông báo tài khoản sắp hết hạn thành công'}
+            else:
+                return {'status': 'error', 'error': 'Gửi thông báo sắp hết hạn thất bại'}
+                
+        except Exception as e:
+            logger.error(f"Error sending expiry notifications: {e}")
             return {'status': 'error', 'error': 'Lỗi hệ thống'}, 500
 
     @app.route('/bitlaunch')

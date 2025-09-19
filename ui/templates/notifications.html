@@ -94,8 +94,8 @@
                             </div>
                             <div class="d-flex gap-2">
                                 <a href="/rocket-chat" class="btn btn-primary">⚙️ Cấu hình RocketChat</a>
-                                <button class="btn btn-success" onclick="testRocketChatNotification()">✔ Test thông báo</button>
-                                <button class="btn btn-info" onclick="testRocketChatDailySummary()">📊 Test Daily Summary</button>
+                                <button class="btn btn-success" onclick="sendAccountDetails()">📋 Gửi thông tin chi tiết tài khoản</button>
+                                <button class="btn btn-info" onclick="sendExpiryNotifications()">⚠️ Gửi thông báo tài khoản sắp hết hạn</button>
                             </div>
                         </div>
                     </div>
@@ -264,43 +264,43 @@ document.getElementById('notify-settings-form').addEventListener('submit', async
     }
 });
 
-// Test RocketChat notification
-async function testRocketChatNotification() {
+// Gửi thông tin chi tiết tài khoản qua RocketChat
+async function sendAccountDetails() {
     try {
-        const res = await fetch('/api/test-rocketchat-notification', {
+        const res = await fetch('/api/send-account-details', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'}
         });
         const data = await res.json();
         
         if (data.status === 'success') {
-            alert('✅ Test thông báo RocketChat thành công!');
+            alert('✅ Đã gửi thông tin chi tiết tài khoản qua RocketChat!');
         } else {
-            alert(`❌ Test thông báo RocketChat thất bại: ${data.error}`);
+            alert(`❌ Gửi thông tin chi tiết tài khoản thất bại: ${data.error}`);
         }
     } catch (error) {
-        console.error('Lỗi test notification:', error);
-        alert('❌ Lỗi khi test thông báo RocketChat!');
+        console.error('Lỗi gửi thông tin chi tiết:', error);
+        alert('❌ Lỗi khi gửi thông tin chi tiết tài khoản!');
     }
 }
 
-// Test RocketChat daily summary
-async function testRocketChatDailySummary() {
+// Gửi thông báo tài khoản sắp hết hạn qua RocketChat
+async function sendExpiryNotifications() {
     try {
-        const res = await fetch('/api/test-rocketchat-daily-summary', {
+        const res = await fetch('/api/send-expiry-notifications', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'}
         });
         const data = await res.json();
         
         if (data.status === 'success') {
-            alert('✅ Test Daily Summary RocketChat thành công!');
+            alert('✅ Đã gửi thông báo tài khoản sắp hết hạn qua RocketChat!');
         } else {
-            alert(`❌ Test Daily Summary RocketChat thất bại: ${data.error}`);
+            alert(`❌ Gửi thông báo sắp hết hạn thất bại: ${data.error}`);
         }
     } catch (error) {
-        console.error('Lỗi test daily summary:', error);
-        alert('❌ Lỗi khi test Daily Summary RocketChat!');
+        console.error('Lỗi gửi thông báo sắp hết hạn:', error);
+        alert('❌ Lỗi khi gửi thông báo sắp hết hạn!');
     }
 }
 
