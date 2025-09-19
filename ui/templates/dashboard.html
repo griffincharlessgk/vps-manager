@@ -1,6 +1,209 @@
 {% extends 'base.html' %}
 {% block content %}
-<h1 class="mb-4">Dashboard</h1>
+<style>
+/* Custom styling for dashboard */
+.dashboard-header {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    padding: 2rem 0;
+    margin-bottom: 2rem;
+    border-radius: 0 0 20px 20px;
+}
+
+.dashboard-header h1 {
+    font-weight: 700;
+    margin: 0;
+    text-shadow: 0 2px 4px rgba(0,0,0,0.3);
+}
+
+.stats-card {
+    border: none;
+    border-radius: 15px;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+    transition: all 0.3s ease;
+    overflow: hidden;
+}
+
+.stats-card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 8px 25px rgba(0,0,0,0.15);
+}
+
+.stats-card .card-body {
+    padding: 1.5rem;
+}
+
+.stats-number {
+    font-size: 2.5rem;
+    font-weight: 700;
+    margin: 0;
+    text-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.stats-title {
+    font-size: 0.9rem;
+    font-weight: 600;
+    margin-bottom: 0.5rem;
+    opacity: 0.9;
+}
+
+.expiry-card {
+    border: none;
+    border-radius: 15px;
+    box-shadow: 0 6px 20px rgba(0,0,0,0.15);
+    margin-bottom: 2rem;
+    transition: all 0.3s ease;
+}
+
+.expiry-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 25px rgba(0,0,0,0.2);
+}
+
+.expiry-card .card-header {
+    background: linear-gradient(135deg, #ff6b6b 0%, #ee5a24 100%);
+    color: white;
+    border: none;
+    border-radius: 15px 15px 0 0;
+    padding: 1rem 1.5rem;
+}
+
+.expiry-card .card-body {
+    padding: 0;
+}
+
+.badge-sm {
+    font-size: 0.7em;
+    padding: 0.4em 0.8em;
+    border-radius: 20px;
+    font-weight: 600;
+}
+
+.table-sm th, .table-sm td {
+    padding: 0.75rem 1rem;
+    font-size: 0.9em;
+    border: none;
+}
+
+.table-sm thead th {
+    background: #f8f9fa;
+    font-weight: 600;
+    color: #495057;
+    border-bottom: 2px solid #dee2e6;
+}
+
+.table-sm tbody tr {
+    border-bottom: 1px solid #f1f3f4;
+}
+
+.table-sm tbody tr:hover {
+    background-color: #f8f9fa;
+}
+
+.pagination-container {
+    background: #f8f9fa;
+    padding: 1rem 1.5rem;
+    border-radius: 0 0 15px 15px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.pagination-controls .btn {
+    min-width: 36px;
+    height: 36px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 8px;
+    font-weight: 600;
+    transition: all 0.2s ease;
+}
+
+.pagination-controls .btn:hover:not(:disabled) {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+}
+
+.service-card {
+    border: none;
+    border-radius: 15px;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+    transition: all 0.3s ease;
+    overflow: hidden;
+    height: 100%;
+}
+
+.service-card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 8px 25px rgba(0,0,0,0.15);
+}
+
+.service-card .card-body {
+    padding: 1.5rem;
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+}
+
+.service-card .btn {
+    margin-top: auto;
+    border-radius: 25px;
+    font-weight: 600;
+    padding: 0.5rem 1.5rem;
+    transition: all 0.3s ease;
+}
+
+.service-card .btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+}
+
+.text-bg-primary { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important; }
+.text-bg-success { background: linear-gradient(135deg, #56ab2f 0%, #a8e6cf 100%) !important; }
+.text-bg-warning { background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%) !important; }
+.text-bg-info { background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%) !important; }
+.text-bg-danger { background: linear-gradient(135deg, #fa709a 0%, #fee140 100%) !important; }
+
+.alert-success {
+    background: linear-gradient(135deg, #d4edda 0%, #c3e6cb 100%);
+    border: none;
+    border-radius: 10px;
+    color: #155724;
+}
+
+.alert-danger {
+    background: linear-gradient(135deg, #f8d7da 0%, #f5c6cb 100%);
+    border: none;
+    border-radius: 10px;
+    color: #721c24;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+    .dashboard-header {
+        padding: 1.5rem 0;
+        margin-bottom: 1.5rem;
+    }
+    
+    .stats-number {
+        font-size: 2rem;
+    }
+    
+    .service-card .card-body {
+        padding: 1rem;
+    }
+}
+</style>
+
+<div class="dashboard-header">
+    <div class="container">
+        <h1>📊 Dashboard VPS Manager</h1>
+        <p class="mb-0 opacity-75">Tổng quan hệ thống quản lý VPS và tài khoản</p>
+    </div>
+</div>
 
 <!-- Thông báo lỗi access denied -->
 <div id="access-denied-alert" class="alert alert-danger" style="display:none;">
@@ -8,87 +211,100 @@
     <p>Bạn không có quyền truy cập trang quản lý user. Chỉ admin mới có thể truy cập tính năng này.</p>
 </div>
 
-<div class="row">
+<div class="row g-4 mb-4">
   <div class="col-md-4">
-    <div class="card text-bg-primary mb-3">
-      <div class="card-body">
-        <h5 class="card-title">Số lượng VPS</h5>
-        <p class="card-text" id="vps-count">0</p>
+    <div class="card stats-card text-bg-primary">
+      <div class="card-body text-center">
+        <h6 class="stats-title">🖥️ Số lượng VPS</h6>
+        <p class="stats-number" id="vps-count">0</p>
       </div>
     </div>
   </div>
   <div class="col-md-4">
-    <div class="card text-bg-success mb-3">
-      <div class="card-body">
-        <h5 class="card-title">Số lượng tài khoản</h5>
-        <p class="card-text" id="account-count">0</p>
+    <div class="card stats-card text-bg-success">
+      <div class="card-body text-center">
+        <h6 class="stats-title">👤 Số lượng tài khoản</h6>
+        <p class="stats-number" id="account-count">0</p>
       </div>
     </div>
   </div>
   <div class="col-md-4">
-    <div class="card text-bg-warning mb-3">
-      <div class="card-body">
-        <h5 class="card-title">Cảnh báo hết hạn</h5>
-        <p class="card-text" id="expiry-count">0</p>
+    <div class="card stats-card text-bg-warning">
+      <div class="card-body text-center">
+        <h6 class="stats-title">⚠️ Cảnh báo hết hạn</h6>
+        <p class="stats-number" id="expiry-count">0</p>
       </div>
     </div>
   </div>
 </div>
 
 <!-- Thêm section hiển thị chi tiết cảnh báo hết hạn -->
-<div class="row">
-  <div class="col-12">
-    <div class="card">
-      <div class="card-header">
-        <h5 class="card-title mb-0">Chi tiết cảnh báo hết hạn</h5>
+<div class="row justify-content-center">
+  <div class="col-lg-10 col-xl-9">
+    <div class="card expiry-card">
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <h6 class="card-title mb-0">📅 Chi tiết cảnh báo hết hạn</h6>
+        <span class="badge bg-light text-dark" id="expiry-summary">0 items</span>
       </div>
       <div class="card-body">
         <div id="expiry-details">
           <!-- Chi tiết cảnh báo sẽ được load ở đây -->
+        </div>
+        
+        <!-- Phân trang -->
+        <div id="pagination-container" class="pagination-container" style="display: none !important;">
+          <div class="pagination-controls">
+            <button id="prev-page" class="btn btn-sm btn-outline-secondary me-1" disabled>
+              <i class="fas fa-chevron-left"></i>
+            </button>
+            <span id="page-numbers" class="mx-2"></span>
+            <button id="next-page" class="btn btn-sm btn-outline-secondary ms-1" disabled>
+              <i class="fas fa-chevron-right"></i>
+            </button>
+          </div>
+          <div class="pagination-info">
+            <small class="text-muted" id="pagination-info">Hiển thị 0-0 của 0 items</small>
+          </div>
         </div>
       </div>
     </div>
   </div>
 </div>
 
-<div class="row">
-  <div class="col-md-4">
-    <div class="card text-bg-info mb-3">
+<div class="row g-4">
+  <div class="col-lg-3 col-md-6">
+    <div class="card service-card text-bg-info">
       <div class="card-body">
-        <h5 class="card-title">Dịch vụ BitLaunch</h5>
+        <h5 class="card-title">🚀 BitLaunch</h5>
         <p class="card-text">Quản lý tài khoản, số dư, lịch sử giao dịch, nạp tiền, server, SSH key...</p>
-        <a href="/bitlaunch" class="btn btn-outline-light">Sử dụng API BitLaunch</a>
+        <a href="/bitlaunch" class="btn btn-outline-light">Sử dụng API</a>
       </div>
     </div>
   </div>
-  <div class="col-md-4">
-    <div class="card text-bg-success mb-3">
+  <div class="col-lg-3 col-md-6">
+    <div class="card service-card text-bg-success">
       <div class="card-body">
-        <h5 class="card-title">Dịch vụ ZingProxy</h5>
-        <p class="card-text">Quản lý tài khoản, số dư, proxy, trạng thái, ngày hết hạn qua API ZingProxy.</p>
-        <a href="/zingproxy" class="btn btn-outline-light">Sử dụng API ZingProxy</a>
+        <h5 class="card-title">🌐 ZingProxy</h5>
+        <p class="card-text">Quản lý tài khoản, số dư, proxy, trạng thái, ngày hết hạn qua API.</p>
+        <a href="/zingproxy" class="btn btn-outline-light">Sử dụng API</a>
       </div>
     </div>
   </div>
-  <div class="col-md-4">
-    <div class="card text-bg-warning mb-3">
+  <div class="col-lg-3 col-md-6">
+    <div class="card service-card text-bg-warning">
       <div class="card-body">
-        <h5 class="card-title">Dịch vụ CloudFly</h5>
+        <h5 class="card-title">☁️ CloudFly</h5>
         <p class="card-text">Quản lý VPS và tài khoản CloudFly thông qua API.</p>
-        <a href="/cloudfly" class="btn btn-outline-light">Sử dụng API CloudFly</a>
+        <a href="/cloudfly" class="btn btn-outline-light">Sử dụng API</a>
       </div>
     </div>
   </div>
-</div>
-
-<!-- Thêm row mới cho Rocket Chat -->
-<div class="row">
-  <div class="col-md-4">
-    <div class="card text-bg-danger mb-3">
+  <div class="col-lg-3 col-md-6">
+    <div class="card service-card text-bg-danger">
       <div class="card-body">
-        <h5 class="card-title">Rocket Chat</h5>
-        <p class="card-text">Cấu hình và gửi thông báo tự động về tài khoản sắp hết hạn, balance thấp qua Rocket Chat.</p>
-        <a href="/rocket-chat" class="btn btn-outline-light">Cấu hình Rocket Chat</a>
+        <h5 class="card-title">💬 Rocket Chat</h5>
+        <p class="card-text">Cấu hình và gửi thông báo tự động về tài khoản sắp hết hạn, balance thấp.</p>
+        <a href="/rocket-chat" class="btn btn-outline-light">Cấu hình</a>
       </div>
     </div>
   </div>
@@ -132,6 +348,11 @@ function formatDaysMessage(days) {
     }
 }
 
+// Biến phân trang
+let currentPage = 1;
+const itemsPerPage = 5;
+let allExpiryItems = [];
+
 // Hàm hiển thị chi tiết cảnh báo hết hạn
 function displayExpiryDetails() {
     const detailsContainer = document.getElementById('expiry-details');
@@ -141,14 +362,14 @@ function displayExpiryDetails() {
         fetch('/api/vps').then(r => r.json()),
         fetch('/api/accounts').then(r => r.json())
     ]).then(([vpsData, accData]) => {
-        let allItems = [];
+        allExpiryItems = [];
         
         // Thêm VPS vào danh sách
         vpsData.forEach(vps => {
             if (vps.expiry) {
                 const daysLeft = calculateDaysUntilExpiry(vps.expiry);
                 if (daysLeft !== null) {
-                    allItems.push({
+                    allExpiryItems.push({
                         type: 'VPS',
                         name: vps.name || vps.id,
                         service: vps.service || 'Unknown',
@@ -165,7 +386,7 @@ function displayExpiryDetails() {
             if (acc.expiry) {
                 const daysLeft = calculateDaysUntilExpiry(acc.expiry);
                 if (daysLeft !== null) {
-                    allItems.push({
+                    allExpiryItems.push({
                         type: 'Account',
                         name: acc.username || acc.id,
                         service: acc.service || 'Unknown',
@@ -177,37 +398,124 @@ function displayExpiryDetails() {
         });
         
         // Sắp xếp theo thời gian hết hạn (gần nhất trước)
-        allItems.sort((a, b) => a.daysLeft - b.daysLeft);
+        allExpiryItems.sort((a, b) => a.daysLeft - b.daysLeft);
+        
+        // Cập nhật summary
+        document.getElementById('expiry-summary').textContent = `${allExpiryItems.length} items`;
         
         // Hiển thị
-        if (allItems.length === 0) {
-            detailsContainer.innerHTML = '<div class="alert alert-success">✅ Không có items nào sắp hết hạn!</div>';
+        if (allExpiryItems.length === 0) {
+            detailsContainer.innerHTML = '<div class="alert alert-success py-3 mb-0"><small>✅ Không có items nào sắp hết hạn!</small></div>';
+            document.getElementById('pagination-container').style.display = 'none';
         } else {
-            let html = '<div class="table-responsive"><table class="table table-striped">';
-            html += '<thead><tr><th>Loại</th><th>Tên</th><th>Service</th><th>IP</th><th>Tình trạng</th></tr></thead><tbody>';
-            
-            allItems.forEach(item => {
-                const daysMessage = formatDaysMessage(item.daysLeft);
-                const rowClass = item.daysLeft < 0 ? 'table-danger' : 
-                               item.daysLeft === 0 ? 'table-warning' : 
-                               item.daysLeft <= 3 ? 'table-info' : '';
-                
-                html += `<tr class="${rowClass}">
-                    <td><strong>${item.type}</strong></td>
-                    <td>${item.name}</td>
-                    <td>${item.service}</td>
-                    <td>${item.ip || 'N/A'}</td>
-                    <td><span class="badge bg-${item.daysLeft < 0 ? 'danger' : item.daysLeft === 0 ? 'warning' : item.daysLeft <= 3 ? 'info' : 'secondary'}">${daysMessage}</span></td>
-                </tr>`;
-            });
-            
-            html += '</tbody></table></div>';
-            detailsContainer.innerHTML = html;
+            renderExpiryTable();
+            setupPagination();
         }
     }).catch(error => {
         console.error('Error loading expiry details:', error);
-        detailsContainer.innerHTML = '<div class="alert alert-danger">❌ Lỗi khi tải thông tin hết hạn</div>';
+        detailsContainer.innerHTML = '<div class="alert alert-danger py-3 mb-0"><small>❌ Lỗi khi tải thông tin hết hạn</small></div>';
+        document.getElementById('pagination-container').style.display = 'none';
     });
+}
+
+// Hàm render bảng với phân trang
+function renderExpiryTable() {
+    const detailsContainer = document.getElementById('expiry-details');
+    const startIndex = (currentPage - 1) * itemsPerPage;
+    const endIndex = startIndex + itemsPerPage;
+    const pageItems = allExpiryItems.slice(startIndex, endIndex);
+    
+    let html = '<div class="table-responsive"><table class="table table-sm table-striped mb-0">';
+    html += '<thead class="table-light"><tr><th class="py-1">Loại</th><th class="py-1">Tên</th><th class="py-1">Service</th><th class="py-1">IP</th><th class="py-1">Tình trạng</th></tr></thead><tbody>';
+    
+    pageItems.forEach(item => {
+        const daysMessage = formatDaysMessage(item.daysLeft);
+        const rowClass = item.daysLeft < 0 ? 'table-danger' : 
+                       item.daysLeft === 0 ? 'table-warning' : 
+                       item.daysLeft <= 3 ? 'table-info' : '';
+        
+        html += `<tr class="${rowClass}">
+            <td class="py-1"><small><strong>${item.type}</strong></small></td>
+            <td class="py-1"><small>${item.name}</small></td>
+            <td class="py-1"><small>${item.service}</small></td>
+            <td class="py-1"><small>${item.ip || 'N/A'}</small></td>
+            <td class="py-1"><span class="badge bg-${item.daysLeft < 0 ? 'danger' : item.daysLeft === 0 ? 'warning' : item.daysLeft <= 3 ? 'info' : 'secondary'} badge-sm">${daysMessage}</span></td>
+        </tr>`;
+    });
+    
+    html += '</tbody></table></div>';
+    detailsContainer.innerHTML = html;
+}
+
+// Hàm setup phân trang
+function setupPagination() {
+    const totalPages = Math.ceil(allExpiryItems.length / itemsPerPage);
+    const paginationContainer = document.getElementById('pagination-container');
+    const prevBtn = document.getElementById('prev-page');
+    const nextBtn = document.getElementById('next-page');
+    const pageNumbers = document.getElementById('page-numbers');
+    const paginationInfo = document.getElementById('pagination-info');
+    
+    if (totalPages <= 1) {
+        paginationContainer.style.display = 'none';
+        return;
+    }
+    
+    paginationContainer.style.display = 'flex';
+    
+    // Cập nhật nút Previous
+    prevBtn.disabled = currentPage === 1;
+    prevBtn.onclick = () => {
+        if (currentPage > 1) {
+            currentPage--;
+            renderExpiryTable();
+            setupPagination();
+        }
+    };
+    
+    // Cập nhật nút Next
+    nextBtn.disabled = currentPage === totalPages;
+    nextBtn.onclick = () => {
+        if (currentPage < totalPages) {
+            currentPage++;
+            renderExpiryTable();
+            setupPagination();
+        }
+    };
+    
+    // Hiển thị số trang
+    let pageHtml = '';
+    const maxVisiblePages = 5;
+    let startPage = Math.max(1, currentPage - Math.floor(maxVisiblePages / 2));
+    let endPage = Math.min(totalPages, startPage + maxVisiblePages - 1);
+    
+    if (endPage - startPage + 1 < maxVisiblePages) {
+        startPage = Math.max(1, endPage - maxVisiblePages + 1);
+    }
+    
+    for (let i = startPage; i <= endPage; i++) {
+        const isActive = i === currentPage;
+        pageHtml += `<button class="btn btn-sm ${isActive ? 'btn-primary' : 'btn-outline-secondary'} me-1" 
+                     onclick="goToPage(${i})" ${isActive ? 'disabled' : ''}>${i}</button>`;
+    }
+    
+    pageNumbers.innerHTML = pageHtml;
+    updatePaginationInfo();
+}
+
+// Hàm chuyển trang
+function goToPage(page) {
+    currentPage = page;
+    renderExpiryTable();
+    setupPagination();
+}
+
+// Hàm cập nhật thông tin phân trang
+function updatePaginationInfo() {
+    const startIndex = (currentPage - 1) * itemsPerPage + 1;
+    const endIndex = Math.min(currentPage * itemsPerPage, allExpiryItems.length);
+    document.getElementById('pagination-info').textContent = 
+        `Hiển thị ${startIndex}-${endIndex} của ${allExpiryItems.length} items`;
 }
 
 // Cập nhật dữ liệu dashboard

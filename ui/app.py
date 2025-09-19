@@ -4,9 +4,12 @@ import os
 # Thêm thư mục gốc vào Python path để có thể import core modules
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+# Load environment variables TRƯỚC KHI import các core modules
+from dotenv import load_dotenv
+load_dotenv()
+
 from flask import Flask, jsonify, render_template, request, session, redirect, url_for
 from core import manager
-import os
 from datetime import datetime, timedelta
 from core import notifier
 from core.scheduler import start_scheduler
@@ -16,7 +19,6 @@ from core.api_clients.bitlaunch import BitLaunchClient, BitLaunchAPIError
 from core.api_clients.zingproxy import ZingProxyClient, ZingProxyAPIError
 from core.api_clients.cloudfly import CloudFlyClient, CloudFlyAPIError
 from core.models import ZingProxyAccount
-from dotenv import load_dotenv
 from flask_cors import CORS
 import logging
 from core.validation import (
@@ -26,9 +28,6 @@ from core.validation import (
 )
 from core.logging_config import setup_logging, log_security_event, log_api_request
 from core.rocket_chat import send_daily_account_summary, send_account_expiry_notification, send_detailed_account_info
-
-# Load environment variables
-load_dotenv()
 
 # Configure logging
 logger = logging.getLogger(__name__)
