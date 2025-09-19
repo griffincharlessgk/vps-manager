@@ -12,6 +12,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from ui.app import create_app
 from core.models import db, User, VPS, Account, BitLaunchAPI, BitLaunchVPS, ZingProxyAccount, ZingProxy, Proxy, CloudFlyAPI, CloudFlyVPS, RocketChatConfig
+from sqlalchemy import text
 
 def init_database():
     """Khởi tạo database và tạo admin user"""
@@ -35,12 +36,12 @@ def init_database():
                 # Tạo admin user
                 print("👤 Tạo admin user...")
                 admin = User(username='admin', role='admin')
-                admin.set_password('123')  # Mật khẩu mặc định: 123
+                admin.set_password('admin123')  # Mật khẩu mặc định: admin123
                 db.session.add(admin)
                 db.session.commit()
                 print("✅ Đã tạo admin user thành công!")
                 print("   Username: admin")
-                print("   Password: 123")
+                print("   Password: admin123")
                 print("   ⚠️  Vui lòng đổi mật khẩu sau khi đăng nhập!")
             
             # Kiểm tra các bảng đã được tạo
@@ -54,7 +55,7 @@ def init_database():
             for table in tables:
                 try:
                     # Thử query để kiểm tra bảng có tồn tại không
-                    db.session.execute(f"SELECT COUNT(*) FROM {table}")
+                    db.session.execute(text(f"SELECT COUNT(*) FROM {table}"))
                     print(f"   ✅ {table}")
                 except Exception as e:
                     print(f"   ❌ {table} - Lỗi: {e}")

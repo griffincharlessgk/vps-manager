@@ -1,3 +1,9 @@
+import sys
+import os
+
+# Thêm thư mục gốc vào Python path để có thể import core modules
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 from flask import Flask, jsonify, render_template, request, session, redirect, url_for
 from core import manager
 import os

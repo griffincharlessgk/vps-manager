@@ -13,7 +13,9 @@ def generate_secret_key():
 
 def generate_encryption_key():
     """Generate encryption key cho sensitive data"""
-    return Fernet.generate_key().decode()
+    # Fernet.generate_key() returns bytes, we need to keep it as bytes
+    # The encryption manager expects base64-encoded bytes
+    return Fernet.generate_key()
 
 def generate_secure_password(length=16):
     """Generate secure password"""
@@ -29,15 +31,18 @@ def main():
     encryption_key = generate_encryption_key()
     db_password = generate_secure_password(12)
     
+    # Convert encryption key to base64 string for environment variable
+    encryption_key_str = encryption_key.decode()
+    
     print("✅ Đã generate các key:")
     print(f"SECRET_KEY={secret_key}")
-    print(f"ENCRYPTION_KEY={encryption_key}")
+    print(f"ENCRYPTION_KEY={encryption_key_str}")
     print(f"DB_PASSWORD={db_password}")
     
     print("\n📝 Cập nhật file .env với các giá trị sau:")
     print("=" * 50)
     print(f"SECRET_KEY={secret_key}")
-    print(f"ENCRYPTION_KEY={encryption_key}")
+    print(f"ENCRYPTION_KEY={encryption_key_str}")
     print(f"DATABASE_URL=postgresql://vps_user:{db_password}@localhost/vps_manager")
     print("=" * 50)
     
@@ -51,7 +56,7 @@ def main():
 # Generated on: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
 
 SECRET_KEY={secret_key}
-ENCRYPTION_KEY={encryption_key}
+ENCRYPTION_KEY={encryption_key_str}
 DB_PASSWORD={db_password}
 
 # PostgreSQL Setup Commands:
