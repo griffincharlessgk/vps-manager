@@ -15,7 +15,6 @@ class User(db.Model):
     notify_days = db.Column(db.Integer, nullable=True, default=3)  # Số ngày trước khi hết hạn để thông báo
     notify_hour = db.Column(db.Integer, nullable=True, default=8)  # Giờ gửi thông báo (0-23)
     notify_minute = db.Column(db.Integer, nullable=True, default=0)  # Phút gửi thông báo (0-59)
-    telegram_chat_id = db.Column(db.String, nullable=True)  # Chat ID Telegram riêng
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 

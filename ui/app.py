@@ -305,60 +305,72 @@ def create_app():
             logger.error(f"Error listing accounts: {e}")
             return {'status': 'error', 'error': str(e)}, 500
 
+    def parse_expiry_date(date_str):
+        """Helper function để parse ngày hết hạn từ nhiều định dạng khác nhau"""
+        try:
+            if not date_str:
+                return None
+                
+            # Xử lý ISO 8601 format: 2025-10-11T03:25:07.000Z
+            if 'T' in date_str:
+                return datetime.fromisoformat(date_str.replace('Z', '+00:00')).date()
+            # Xử lý YYYY-MM-DD format
+            else:
+                return datetime.strptime(date_str, '%Y-%m-%d').date()
+        except Exception as e:
+            logger.warning(f"Error parsing expiry date {date_str}: {e}")
+            return None
+
     @app.route('/api/expiry-warnings')
     def expiry_warnings():
-        # Không yêu cầu đăng nhập cho dashboard
-        # if 'user_id' not in session:
-        #     return {'status': 'error', 'error': 'Chưa đăng nhập'}, 401
-        
-        warnings = []
-        
-        from sqlalchemy import text
-        from datetime import datetime, timedelta
-        
+        """API trả về danh sách cảnh báo hết hạn có cấu trúc"""
         try:
+            from sqlalchemy import text
+            from datetime import datetime
+            
             today = datetime.now().date()
             warning_days = 7
+            warnings = []
             
             # Lấy tất cả VPS
-            cursor = db.session.execute(text('SELECT id, name, service, ip, expiry FROM vps'))
+            cursor = db.session.execute(text('SELECT id, name, service, ip, expiry FROM vps WHERE expiry IS NOT NULL'))
             vps_list = cursor.fetchall()
             
             for vps in vps_list:
                 if vps.expiry:
-                    try:
-                        expiry_date = datetime.strptime(vps.expiry, '%Y-%m-%d').date()
+                    expiry_date = parse_expiry_date(vps.expiry)
+                    if expiry_date:
                         days_left = (expiry_date - today).days
-                        if 0 <= days_left <= warning_days:
-                            if days_left == 0:
-                                warnings.append(f"🚨 VPS '{vps.name or vps.id}' HẾT HẠN HÔM NAY!")
-                            elif days_left == 1:
-                                warnings.append(f"⚠️ VPS '{vps.name or vps.id}' hết hạn ngày mai ({vps.expiry})")
-                            else:
-                                warnings.append(f"📅 VPS '{vps.name or vps.id}' hết hạn trong {days_left} ngày ({vps.expiry})")
-                    except:
-                        warnings.append(f"VPS '{vps.name or vps.id}' sẽ hết hạn vào {vps.expiry}")
+                        if days_left <= warning_days:  # Bao gồm cả items đã hết hạn
+                            warnings.append({
+                                'item_type': 'VPS',
+                                'name': vps.name or f"VPS-{vps.id}",
+                                'service': vps.service or 'N/A',
+                                'ip': vps.ip or 'N/A',
+                                'expiry': expiry_date.strftime('%Y-%m-%d'),
+                                'days_left': days_left
+                            })
             
             # Lấy tất cả Accounts
-            cursor = db.session.execute(text('SELECT id, username, service, expiry FROM accounts'))
+            cursor = db.session.execute(text('SELECT id, username, service, expiry FROM accounts WHERE expiry IS NOT NULL'))
             acc_list = cursor.fetchall()
             
             for acc in acc_list:
                 if acc.expiry:
-                    try:
-                        expiry_date = datetime.strptime(acc.expiry, '%Y-%m-%d').date()
+                    expiry_date = parse_expiry_date(acc.expiry)
+                    if expiry_date:
                         days_left = (expiry_date - today).days
-                        if 0 <= days_left <= warning_days:
-                            if days_left == 0:
-                                warnings.append(f"🚨 Account '{acc.username or acc.id}' HẾT HẠN HÔM NAY!")
-                            elif days_left == 1:
-                                warnings.append(f"⚠️ Account '{acc.username or acc.id}' hết hạn ngày mai ({acc.expiry})")
-                            else:
-                                warnings.append(f"📅 Account '{acc.username or acc.id}' hết hạn trong {days_left} ngày ({acc.expiry})")
-                    except:
-                        warnings.append(f"Account '{acc.username or acc.id}' sẽ hết hạn vào {acc.expiry}")
+                        if days_left <= warning_days:  # Bao gồm cả items đã hết hạn
+                            warnings.append({
+                                'item_type': 'Account',
+                                'name': acc.username or f"Account-{acc.id}",
+                                'service': acc.service or 'N/A',
+                                'ip': 'N/A',
+                                'expiry': expiry_date.strftime('%Y-%m-%d'),
+                                'days_left': days_left
+                            })
             
-            # Thêm thông tin proxy sắp hết hạn nếu user đã đăng nhập
+            # Lấy tất cả Proxies (nếu user đã đăng nhập)
             if 'user_id' in session:
                 # Proxy từ ZingProxy
                 cursor = db.session.execute(text('''
@@ -371,18 +383,18 @@ def create_app():
                 
                 for proxy in proxy_list:
                     if proxy.expire_at:
-                        try:
-                            expiry_date = datetime.strptime(proxy.expire_at, '%Y-%m-%d').date()
+                        expiry_date = parse_expiry_date(proxy.expire_at)
+                        if expiry_date:
                             days_left = (expiry_date - today).days
-                            if 0 <= days_left <= warning_days:
-                                if days_left == 0:
-                                    warnings.append(f"🚨 Proxy {proxy.proxy_id} ({proxy.ip}) HẾT HẠN HÔM NAY!")
-                                elif days_left == 1:
-                                    warnings.append(f"⚠️ Proxy {proxy.proxy_id} ({proxy.ip}) hết hạn ngày mai ({proxy.expire_at})")
-                                else:
-                                    warnings.append(f"📅 Proxy {proxy.proxy_id} ({proxy.ip}) hết hạn trong {days_left} ngày ({proxy.expire_at})")
-                        except:
-                            warnings.append(f"Proxy {proxy.proxy_id} ({proxy.ip}) sẽ hết hạn vào {proxy.expire_at}")
+                            if days_left <= warning_days:  # Bao gồm cả items đã hết hạn
+                                warnings.append({
+                                    'item_type': 'Proxy',
+                                    'name': f"{proxy.proxy_id} ({proxy.type})",
+                                    'service': 'ZingProxy',
+                                    'ip': proxy.ip,
+                                    'expiry': expiry_date.strftime('%Y-%m-%d'),
+                                    'days_left': days_left
+                                })
                 
                 # Proxy từ hệ thống quản lý proxy
                 cursor = db.session.execute(text('''
@@ -394,21 +406,25 @@ def create_app():
                 
                 for proxy in managed_proxy_list:
                     if proxy.expire_at:
-                        try:
-                            expiry_date = datetime.strptime(proxy.expire_at, '%Y-%m-%d').date()
+                        expiry_date = parse_expiry_date(proxy.expire_at)
+                        if expiry_date:
                             days_left = (expiry_date - today).days
-                            if 0 <= days_left <= warning_days:
+                            if days_left <= warning_days:  # Bao gồm cả items đã hết hạn
                                 source_text = f"[{proxy.source}]" if proxy.source != 'manual' else ""
-                                if days_left == 0:
-                                    warnings.append(f"🚨 Proxy {proxy.name} ({proxy.ip}:{proxy.port}) {source_text} HẾT HẠN HÔM NAY!")
-                                elif days_left == 1:
-                                    warnings.append(f"⚠️ Proxy {proxy.name} ({proxy.ip}:{proxy.port}) {source_text} hết hạn ngày mai ({proxy.expire_at})")
-                                else:
-                                    warnings.append(f"📅 Proxy {proxy.name} ({proxy.ip}:{proxy.port}) {source_text} hết hạn trong {days_left} ngày ({proxy.expire_at})")
-                        except:
-                            warnings.append(f"Proxy {proxy.name} ({proxy.ip}:{proxy.port}) sẽ hết hạn vào {proxy.expire_at}")
+                                warnings.append({
+                                    'item_type': 'Proxy',
+                                    'name': f"{proxy.name} {source_text}",
+                                    'service': 'Proxy Management',
+                                    'ip': f"{proxy.ip}:{proxy.port}",
+                                    'expiry': expiry_date.strftime('%Y-%m-%d'),
+                                    'days_left': days_left
+                                })
+            
+            # Sắp xếp theo số ngày còn lại (gần hết hạn trước)
+            warnings.sort(key=lambda x: x['days_left'])
             
             return {'status': 'success', 'warnings': warnings}
+            
         except Exception as e:
             logger.error(f"Error getting expiry warnings: {e}")
             return {'status': 'error', 'error': 'Lỗi khi lấy cảnh báo hết hạn'}, 500
@@ -475,39 +491,6 @@ def create_app():
         except Exception as e:
             return {'status': 'error', 'error': str(e)}
 
-    @app.route('/api/test-notification', methods=['POST'])
-    def test_notification():
-        """Test gửi thông báo thông thường"""
-        if 'user_id' not in session:
-            return {'status': 'error', 'error': 'Chưa đăng nhập'}, 401
-        user = User.query.get(session['user_id'])
-        if not user.telegram_chat_id:
-            return {'status': 'error', 'error': 'Chưa cấu hình Chat ID Telegram'}, 400
-        
-        try:
-            from core.telegram_notify import send_telegram_message
-            from core import manager
-            
-            # Lấy dữ liệu test
-            vps_list = manager.list_vps()
-            acc_list = manager.list_accounts()
-            
-            # Gửi thông báo test
-            message = f"🧪 **TEST THÔNG BÁO**\n\n"
-            message += f"👤 **User:** {user.username}\n"
-            message += f"📅 **Thời gian:** {datetime.now().strftime('%d/%m/%Y %H:%M:%S')}\n\n"
-            message += f"📊 **Dữ liệu hiện tại:**\n"
-            message += f"• VPS: {len(vps_list)} máy chủ\n"
-            message += f"• Account: {len(acc_list)} tài khoản\n\n"
-            message += f"✅ Đây là thông báo test từ VPS Manager!"
-            
-            token = os.getenv('TELEGRAM_TOKEN')
-            if send_telegram_message(token, user.telegram_chat_id, message):
-                return {'status': 'success', 'message': 'Đã gửi thông báo test thành công'}
-            else:
-                return {'status': 'error', 'error': 'Lỗi gửi thông báo'}, 500
-        except Exception as e:
-            return {'status': 'error', 'error': str(e)}
 
     @app.route('/api/notify-days', methods=['GET', 'POST'])
     def notify_days_setting():
@@ -663,27 +646,62 @@ def create_app():
             logger.error(f"Error in user detail API: {e}")
             return {'status': 'error', 'error': 'Lỗi hệ thống'}, 500
 
-    @app.route('/api/telegram-chat-id', methods=['GET', 'POST'])
-    def telegram_chat_id_setting():
+    @app.route('/api/test-rocketchat-notification', methods=['POST'])
+    def test_rocketchat_notification():
         if not is_authenticated():
             return {'status': 'error', 'error': 'Chưa đăng nhập'}, 401
         
         try:
+            from core.models import RocketChatConfig
+            from core.rocket_chat import send_formatted_notification_simple
+            
             user = get_current_user()
-            if request.method == 'GET':
-                return {'status': 'success', 'telegram_chat_id': user.telegram_chat_id or ''}
+            config = RocketChatConfig.query.filter_by(user_id=user.id, is_active=True).first()
             
-            # POST: cập nhật
-            data = request.get_json()
-            if not data:
-                return {'status': 'error', 'error': 'Invalid JSON data'}, 400
+            if not config:
+                return {'status': 'error', 'error': 'Chưa cấu hình RocketChat'}, 400
             
-            user.telegram_chat_id = data.get('telegram_chat_id', '').strip()
-            db.session.commit()
-            return {'status': 'success', 'telegram_chat_id': user.telegram_chat_id}
+            # Gửi thông báo test
+            success = send_formatted_notification_simple(
+                room_id=config.room_id,
+                title="🧪 Test Notification",
+                text=f"Đây là thông báo test từ VPS Manager cho user {user.username}",
+                auth_token=config.auth_token,
+                user_id=config.user_id_rocket,
+                color="good"
+            )
             
+            if success:
+                return {'status': 'success', 'message': 'Test notification sent successfully'}
+            else:
+                return {'status': 'error', 'error': 'Failed to send test notification'}
+                
         except Exception as e:
-            logger.error(f"Error in telegram chat ID setting: {e}")
+            logger.error(f"Error in test RocketChat notification: {e}")
+            return {'status': 'error', 'error': 'Lỗi hệ thống'}, 500
+
+    @app.route('/api/test-rocketchat-daily-summary', methods=['POST'])
+    def test_rocketchat_daily_summary():
+        if not is_authenticated():
+            return {'status': 'error', 'error': 'Chưa đăng nhập'}, 401
+        
+        try:
+            from core.models import RocketChatConfig
+            from core import notifier
+            
+            user = get_current_user()
+            config = RocketChatConfig.query.filter_by(user_id=user.id, is_active=True).first()
+            
+            if not config:
+                return {'status': 'error', 'error': 'Chưa cấu hình RocketChat'}, 400
+            
+            # Gửi daily summary test
+            notifier.send_daily_summary_rocketchat(user, config)
+            
+            return {'status': 'success', 'message': 'Test daily summary sent successfully'}
+                
+        except Exception as e:
+            logger.error(f"Error in test RocketChat daily summary: {e}")
             return {'status': 'error', 'error': 'Lỗi hệ thống'}, 500
 
     @app.route('/bitlaunch')
@@ -1670,45 +1688,6 @@ def create_app():
             logger.error(f"Error in test daily summary: {e}")
             return {'status': 'error', 'error': str(e)}, 500
 
-    @app.route('/api/test-telegram-simple', methods=['POST'])
-    def test_telegram_simple():
-        """Test gửi message đơn giản qua Telegram"""
-        if 'user_id' not in session:
-            return {'status': 'error', 'error': 'Chưa đăng nhập'}, 401
-        
-        try:
-            user = User.query.get(session['user_id'])
-            if not user:
-                return {'status': 'error', 'error': 'User không tồn tại'}, 404
-            
-            if not user.telegram_chat_id:
-                return {'status': 'error', 'error': 'User chưa có Telegram Chat ID'}, 400
-            
-            # Test gửi message đơn giản
-            from core.telegram_notify import send_telegram_message
-            message = f"🧪 **TEST SIMPLE MESSAGE**\n\n"
-            message += f"👤 **User:** {user.username}\n"
-            message += f"📅 **Thời gian:** {datetime.now().strftime('%d/%m/%Y %H:%M:%S')}\n\n"
-            message += f"✅ Đây là test message đơn giản!"
-            
-            token = os.getenv('TELEGRAM_TOKEN')
-            logger.info(f"[API] Testing simple telegram message")
-            logger.info(f"[API] Token: {token[:10] if token else 'None'}...")
-            logger.info(f"[API] Chat ID: {user.telegram_chat_id}")
-            logger.info(f"[API] Message length: {len(message)}")
-            
-            success = send_telegram_message(token, user.telegram_chat_id, message)
-            
-            if success:
-                logger.info(f"[API] Simple telegram test successful")
-                return {'status': 'success', 'message': 'Đã gửi test message đơn giản thành công'}
-            else:
-                logger.error(f"[API] Simple telegram test failed")
-                return {'status': 'error', 'error': 'Lỗi gửi test message đơn giản'}, 500
-                
-        except Exception as e:
-            logger.error(f"Error in test telegram simple: {e}")
-            return {'status': 'error', 'error': str(e)}, 500
 
     # CloudFly API Routes
     @app.route('/api/cloudfly/apis', methods=['GET'])

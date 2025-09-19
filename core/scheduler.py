@@ -14,45 +14,55 @@ def start_scheduler():
     scheduler = BackgroundScheduler()
     
     def send_expiry_warnings():
-        """Gửi cảnh báo hết hạn theo giờ của từng user"""
+        """Gửi cảnh báo hết hạn qua RocketChat cho users có cấu hình"""
         logger.info("[Scheduler] Running send_expiry_warnings job")
         with app.app_context():
-            # Kiểm tra TELEGRAM_TOKEN
-            token = os.getenv('TELEGRAM_TOKEN')
-            if not token:
-                logger.warning("[Scheduler] TELEGRAM_TOKEN not found")
+            from core.models import RocketChatConfig
+            
+            # Kiểm tra users có cấu hình RocketChat
+            configs = RocketChatConfig.query.filter_by(is_active=True).all()
+            if not configs:
+                logger.info("[Scheduler] No active RocketChat configurations found")
                 return
             
-            # Kiểm tra users có Chat ID
-            users = User.query.filter(User.telegram_chat_id.isnot(None)).all()
-            if not users:
-                logger.warning("[Scheduler] No users with telegram_chat_id found")
-                return
-            
-            logger.info(f"[Scheduler] Found {len(users)} users with telegram_chat_id")
+            logger.info(f"[Scheduler] Found {len(configs)} active RocketChat configurations")
             
             # Lấy dữ liệu
             try:
                 vps_list = manager.list_vps()
                 acc_list = manager.list_accounts()
                 logger.info(f"[Scheduler] Found {len(vps_list)} VPS and {len(acc_list)} accounts")
-                notifier.notify_expiry_telegram_per_user(vps_list, item_type='VPS')
-                notifier.notify_expiry_telegram_per_user(acc_list, item_type='Account')
+                
+                # Gửi thông báo qua RocketChat cho từng user
+                for config in configs:
+                    user = User.query.get(config.user_id)
+                    if not user:
+                        continue
+                    
+                    # Gửi thông báo VPS
+                    notifier.notify_expiry_rocketchat_per_user(vps_list, item_type='VPS', user=user, config=config)
+                    # Gửi thông báo Account
+                    notifier.notify_expiry_rocketchat_per_user(acc_list, item_type='Account', user=user, config=config)
+                    
             except Exception as e:
                 logger.error(f"[Scheduler] Error in send_expiry_warnings: {e}")
     
     def send_daily_summary():
-        """Gửi báo cáo tổng hợp theo giờ của từng user"""
+        """Gửi báo cáo tổng hợp qua RocketChat cho users có cấu hình"""
         logger.info("[Scheduler] Running send_daily_summary job")
         with app.app_context():
-            users = User.query.all()
-            logger.info(f"[Scheduler] Found {len(users)} total users")
-            for user in users:
-                if not user.telegram_chat_id:
+            from core.models import RocketChatConfig
+            
+            configs = RocketChatConfig.query.filter_by(is_active=True).all()
+            logger.info(f"[Scheduler] Found {len(configs)} active RocketChat configurations")
+            
+            for config in configs:
+                user = User.query.get(config.user_id)
+                if not user:
                     continue
                 try:
                     logger.info(f"[Scheduler] Sending daily summary to user {user.username}")
-                    notifier.send_daily_summary(user)
+                    notifier.send_daily_summary_rocketchat(user, config)
                 except Exception as e:
                     logger.error(f"[Scheduler] Error sending daily summary to {user.username}: {e}")
     
