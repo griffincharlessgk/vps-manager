@@ -680,63 +680,70 @@ def create_app():
             logger.error(f"Error in test RocketChat notification: {e}")
             return {'status': 'error', 'error': 'Lỗi hệ thống'}, 500
 
-    @app.route('/api/send-account-details', methods=['POST'])
+    @app.route('/api/send-account-details', methods=['GET'])
     def send_account_details():
-        """Gửi thông tin chi tiết tài khoản qua RocketChat"""
-        if not is_authenticated():
-            return {'status': 'error', 'error': 'Chưa đăng nhập'}, 401
-        
+        """Gửi thông tin chi tiết tài khoản qua RocketChat cho tất cả users có cấu hình"""
         try:
-            from core.models import RocketChatConfig
+            from core.models import RocketChatConfig, User
             from core.rocket_chat import send_detailed_account_info
             from core import manager
             
-            user = get_current_user()
-            config = RocketChatConfig.query.filter_by(user_id=user.id, is_active=True).first()
+            # Lấy tất cả cấu hình RocketChat active
+            configs = RocketChatConfig.query.filter_by(is_active=True).all()
             
-            if not config:
-                return {'status': 'error', 'error': 'Chưa cấu hình RocketChat'}, 400
+            if not configs:
+                return {'status': 'error', 'error': 'Không có cấu hình RocketChat nào'}, 400
             
-            # Lấy danh sách tài khoản từ tất cả nguồn
+            logger.info(f"Found {len(configs)} active RocketChat configurations")
+            
+            # Lấy danh sách tài khoản từ tất cả nguồn (không phụ thuộc vào user cụ thể)
             manual_acc_list = manager.list_accounts()
             for acc in manual_acc_list:
                 if 'service' not in acc:
                     acc['service'] = ''
                 acc['source'] = 'manual'
             
-            # Tài khoản từ BitLaunch
-            bitlaunch_apis = manager.list_bitlaunch_apis(user.id)
+            # Tài khoản từ BitLaunch (lấy tất cả)
+            from core.models import BitLaunchAPI
+            bitlaunch_apis = BitLaunchAPI.query.filter_by(is_active=True).all()
             bitlaunch_acc_list = []
             for api in bitlaunch_apis:
                 acc = {
-                    'id': f"bitlaunch_{api['id']}",
-                    'username': api['email'],
+                    'id': f"bitlaunch_{api.id}",
+                    'username': api.email,
                     'service': 'BitLaunch',
                     'expiry': None,
-                    'balance': api.get('balance', 0),
+                    'balance': api.balance or 0,
                     'source': 'bitlaunch'
                 }
                 bitlaunch_acc_list.append(acc)
             
-            # Tài khoản từ ZingProxy
-            zingproxy_acc_list = manager.list_zingproxy_accounts(user.id)
-            for acc in zingproxy_acc_list:
-                acc['source'] = 'zingproxy'
-                acc['username'] = acc.get('email', 'N/A')
-                acc['service'] = 'ZingProxy'
-                acc['expiry'] = None
-                acc['balance'] = acc.get('balance', 0)
+            # Tài khoản từ ZingProxy (lấy tất cả)
+            from core.models import ZingProxyAccount
+            zingproxy_accounts = ZingProxyAccount.query.all()
+            zingproxy_acc_list = []
+            for acc in zingproxy_accounts:
+                zingproxy_acc = {
+                    'id': f"zingproxy_{acc.id}",
+                    'username': acc.email,
+                    'service': 'ZingProxy',
+                    'expiry': None,
+                    'balance': acc.balance or 0,
+                    'source': 'zingproxy'
+                }
+                zingproxy_acc_list.append(zingproxy_acc)
             
-            # Tài khoản từ CloudFly
-            cloudfly_apis = manager.list_cloudfly_apis(user.id)
+            # Tài khoản từ CloudFly (lấy tất cả)
+            from core.models import CloudFlyAPI
+            cloudfly_apis = CloudFlyAPI.query.filter_by(is_active=True).all()
             cloudfly_acc_list = []
             for api in cloudfly_apis:
                 acc = {
-                    'id': f"cloudfly_{api['id']}",
-                    'username': api['email'],
+                    'id': f"cloudfly_{api.id}",
+                    'username': api.email,
                     'service': 'CloudFly',
                     'expiry': None,
-                    'balance': api.get('balance', 0),
+                    'balance': api.balance or 0,
                     'source': 'cloudfly'
                 }
                 cloudfly_acc_list.append(acc)
@@ -744,80 +751,108 @@ def create_app():
             # Kết hợp tất cả tài khoản
             all_accounts = manual_acc_list + bitlaunch_acc_list + zingproxy_acc_list + cloudfly_acc_list
             
-            # Gửi thông tin chi tiết tài khoản
-            success = send_detailed_account_info(
-                room_id=config.room_id,
-                auth_token=config.auth_token,
-                user_id=config.user_id_rocket,
-                accounts=all_accounts
-            )
+            success_count = 0
+            total_configs = len(configs)
             
-            if success:
-                return {'status': 'success', 'message': 'Đã gửi thông tin chi tiết tài khoản thành công'}
+            # Gửi thông tin chi tiết cho từng user có cấu hình RocketChat
+            for config in configs:
+                try:
+                    user = User.query.get(config.user_id)
+                    if not user:
+                        logger.warning(f"User {config.user_id} not found for config {config.id}")
+                        continue
+                    
+                    # Gửi thông tin chi tiết tài khoản
+                    success = send_detailed_account_info(
+                        room_id=config.room_id,
+                        auth_token=config.auth_token,
+                        user_id=config.user_id_rocket,
+                        accounts=all_accounts
+                    )
+                    
+                    if success:
+                        success_count += 1
+                        logger.info(f"Successfully sent account details for user {user.username}")
+                    else:
+                        logger.error(f"Failed to send account details for user {user.username}")
+                        
+                except Exception as e:
+                    logger.error(f"Error sending account details for config {config.id}: {e}")
+                    continue
+            
+            if success_count > 0:
+                return {'status': 'success', 'message': f'Đã gửi thông tin chi tiết tài khoản thành công cho {success_count}/{total_configs} users'}
             else:
-                return {'status': 'error', 'error': 'Gửi thông tin chi tiết tài khoản thất bại'}
+                return {'status': 'error', 'error': 'Gửi thông tin chi tiết tài khoản thất bại cho tất cả users'}
                 
         except Exception as e:
             logger.error(f"Error sending account details: {e}")
             return {'status': 'error', 'error': 'Lỗi hệ thống'}, 500
 
-    @app.route('/api/send-expiry-notifications', methods=['POST'])
+    @app.route('/api/send-expiry-notifications', methods=['GET'])
     def send_expiry_notifications():
-        """Gửi thông báo tài khoản sắp hết hạn qua RocketChat"""
-        if not is_authenticated():
-            return {'status': 'error', 'error': 'Chưa đăng nhập'}, 401
-        
+        """Gửi thông báo tài khoản sắp hết hạn qua RocketChat cho tất cả users có cấu hình"""
         try:
-            from core.models import RocketChatConfig
+            from core.models import RocketChatConfig, User
             from core.rocket_chat import send_account_expiry_notification
             from core import manager
             
-            user = get_current_user()
-            config = RocketChatConfig.query.filter_by(user_id=user.id, is_active=True).first()
+            # Lấy tất cả cấu hình RocketChat active
+            configs = RocketChatConfig.query.filter_by(is_active=True).all()
             
-            if not config:
-                return {'status': 'error', 'error': 'Chưa cấu hình RocketChat'}, 400
+            if not configs:
+                return {'status': 'error', 'error': 'Không có cấu hình RocketChat nào'}, 400
             
-            # Lấy danh sách tài khoản từ tất cả nguồn
+            logger.info(f"Found {len(configs)} active RocketChat configurations")
+            
+            # Lấy danh sách tài khoản từ tất cả nguồn (không phụ thuộc vào user cụ thể)
             manual_acc_list = manager.list_accounts()
             for acc in manual_acc_list:
                 if 'service' not in acc:
                     acc['service'] = ''
                 acc['source'] = 'manual'
             
-            # Tài khoản từ BitLaunch
-            bitlaunch_apis = manager.list_bitlaunch_apis(user.id)
+            # Tài khoản từ BitLaunch (lấy tất cả)
+            from core.models import BitLaunchAPI
+            bitlaunch_apis = BitLaunchAPI.query.filter_by(is_active=True).all()
             bitlaunch_acc_list = []
             for api in bitlaunch_apis:
                 acc = {
-                    'id': f"bitlaunch_{api['id']}",
-                    'username': api['email'],
+                    'id': f"bitlaunch_{api.id}",
+                    'username': api.email,
                     'service': 'BitLaunch',
                     'expiry': None,
-                    'balance': api.get('balance', 0),
+                    'balance': api.balance or 0,
                     'source': 'bitlaunch'
                 }
                 bitlaunch_acc_list.append(acc)
             
-            # Tài khoản từ ZingProxy
-            zingproxy_acc_list = manager.list_zingproxy_accounts(user.id)
-            for acc in zingproxy_acc_list:
-                acc['source'] = 'zingproxy'
-                acc['username'] = acc.get('email', 'N/A')
-                acc['service'] = 'ZingProxy'
-                acc['expiry'] = None
-                acc['balance'] = acc.get('balance', 0)
+            # Tài khoản từ ZingProxy (lấy tất cả)
+            from core.models import ZingProxyAccount
+            zingproxy_accounts = ZingProxyAccount.query.all()
+            zingproxy_acc_list = []
+            for acc in zingproxy_accounts:
+                zingproxy_acc = {
+                    'id': f"zingproxy_{acc.id}",
+                    'username': acc.email,
+                    'service': 'ZingProxy',
+                    'expiry': None,
+                    'balance': acc.balance or 0,
+                    'source': 'zingproxy'
+                }
+                zingproxy_acc_list.append(zingproxy_acc)
             
-            # Tài khoản từ CloudFly
-            cloudfly_apis = manager.list_cloudfly_apis(user.id)
+            # Tài khoản từ CloudFly (lấy tất cả)
+            from core.models import CloudFlyAPI
+            cloudfly_apis = CloudFlyAPI.query.filter_by(is_active=True).all()
             cloudfly_acc_list = []
             for api in cloudfly_apis:
                 acc = {
-                    'id': f"cloudfly_{api['id']}",
-                    'username': api['email'],
+                    'id': f"cloudfly_{api.id}",
+                    'username': api.email,
                     'service': 'CloudFly',
                     'expiry': None,
-                    'balance': api.get('balance', 0),
+                    'balance': api.balance or 0,
                     'source': 'cloudfly'
                 }
                 cloudfly_acc_list.append(acc)
@@ -825,19 +860,40 @@ def create_app():
             # Kết hợp tất cả tài khoản
             all_accounts = manual_acc_list + bitlaunch_acc_list + zingproxy_acc_list + cloudfly_acc_list
             
-            # Gửi thông báo tài khoản sắp hết hạn
-            success = send_account_expiry_notification(
-                room_id=config.room_id,
-                auth_token=config.auth_token,
-                user_id=config.user_id_rocket,
-                accounts=all_accounts,
-                warning_days=user.notify_days or 7
-            )
+            success_count = 0
+            total_configs = len(configs)
             
-            if success:
-                return {'status': 'success', 'message': 'Đã gửi thông báo tài khoản sắp hết hạn thành công'}
+            # Gửi thông báo cho từng user có cấu hình RocketChat
+            for config in configs:
+                try:
+                    user = User.query.get(config.user_id)
+                    if not user:
+                        logger.warning(f"User {config.user_id} not found for config {config.id}")
+                        continue
+                    
+                    # Gửi thông báo tài khoản sắp hết hạn
+                    success = send_account_expiry_notification(
+                        room_id=config.room_id,
+                        auth_token=config.auth_token,
+                        user_id=config.user_id_rocket,
+                        accounts=all_accounts,
+                        warning_days=user.notify_days or 7
+                    )
+                    
+                    if success:
+                        success_count += 1
+                        logger.info(f"Successfully sent expiry notifications for user {user.username}")
+                    else:
+                        logger.error(f"Failed to send expiry notifications for user {user.username}")
+                        
+                except Exception as e:
+                    logger.error(f"Error sending expiry notifications for config {config.id}: {e}")
+                    continue
+            
+            if success_count > 0:
+                return {'status': 'success', 'message': f'Đã gửi thông báo tài khoản sắp hết hạn thành công cho {success_count}/{total_configs} users'}
             else:
-                return {'status': 'error', 'error': 'Gửi thông báo sắp hết hạn thất bại'}
+                return {'status': 'error', 'error': 'Gửi thông báo sắp hết hạn thất bại cho tất cả users'}
                 
         except Exception as e:
             logger.error(f"Error sending expiry notifications: {e}")
@@ -2538,6 +2594,334 @@ def init_app():
         else:
             print("❌ Scheduler không thể khởi động")
             
+        # ===== CRON JOB API ENDPOINTS =====
+        
+        @app.route('/api/sync-zingproxy-proxies', methods=['GET'])
+        def api_sync_zingproxy_proxies():
+            """Đồng bộ proxy từ ZingProxy - có thể gọi từ cron job"""
+            try:
+                from core.api_clients.zingproxy import ZingProxyClient, ZingProxyAPIError
+                from core.models import ZingProxyAccount
+                
+                accounts = ZingProxyAccount.query.all()
+                logger.info(f"Found {len(accounts)} ZingProxy accounts for auto sync")
+                
+                total_synced = 0
+                failed_accounts = 0
+                
+                for acc in accounts:
+                    try:
+                        logger.info(f"Auto syncing proxies for account {acc.id} ({acc.email})")
+                        client = ZingProxyClient(access_token=acc.access_token)
+                        proxies = client.get_all_active_proxies()
+                        
+                        if proxies:
+                            # Import vào hệ thống quản lý proxy
+                            zingproxy_data = []
+                            for proxy in proxies:
+                                zingproxy_data.append({
+                                    'proxy_id': proxy.get('proxy_id'),
+                                    'ip': proxy.get('ip'),
+                                    'port': proxy.get('port'),
+                                    'port_socks5': proxy.get('port_socks5'),
+                                    'username': proxy.get('username'),
+                                    'password': proxy.get('password'),
+                                    'status': proxy.get('status'),
+                                    'expire_at': proxy.get('expire_at'),
+                                    'location': proxy.get('location'),
+                                    'type': proxy.get('type'),
+                                    'note': proxy.get('note'),
+                                    'auto_renew': proxy.get('auto_renew')
+                                })
+                            
+                            imported_count = manager.import_proxies_from_zingproxy(acc.user_id, zingproxy_data)
+                            total_synced += imported_count
+                            logger.info(f"Auto synced {imported_count} proxies for account {acc.id}")
+                        else:
+                            logger.info(f"No proxies found for account {acc.id}")
+                            
+                    except Exception as e:
+                        logger.error(f"Error auto syncing proxies for account {acc.id}: {e}")
+                        failed_accounts += 1
+                        continue
+                
+                logger.info(f"Auto sync completed: {total_synced} proxies synced, {failed_accounts} accounts failed")
+                return {'status': 'success', 'message': f'Đồng bộ hoàn tất: {total_synced} proxy, {failed_accounts} tài khoản lỗi'}
+                
+            except Exception as e:
+                logger.error(f"Error in sync-zingproxy-proxies: {e}")
+                return {'status': 'error', 'error': 'Lỗi hệ thống'}, 500
+
+        @app.route('/api/update-bitlaunch-apis', methods=['GET'])
+        def api_update_bitlaunch_apis():
+            """Cập nhật thông tin tài khoản BitLaunch - có thể gọi từ cron job"""
+            try:
+                from core.models import BitLaunchAPI
+                from core.api_clients.bitlaunch import BitLaunchClient
+                from datetime import datetime
+                
+                apis = BitLaunchAPI.query.filter_by(is_active=True).all()
+                logger.info(f"Found {len(apis)} BitLaunch APIs for update")
+                
+                updated_count = 0
+                for api in apis:
+                    try:
+                        logger.info(f"Updating BitLaunch API {api.id}")
+                        client = BitLaunchClient(api.api_key)
+                        account_info = client.get_account_info()
+                        # Cập nhật thông tin API
+                        api.balance = account_info.get('balance', 0)
+                        api.account_limit = account_info.get('account_limit', 0)
+                        api.last_updated = datetime.utcnow()
+                        db.session.commit()
+                        logger.info(f"Updated BitLaunch API {api.id}: balance=${api.balance}")
+                        updated_count += 1
+                    except Exception as e:
+                        logger.error(f"Error updating BitLaunch API {api.id}: {e}")
+                        continue
+                
+                logger.info(f"Successfully updated {updated_count}/{len(apis)} BitLaunch APIs")
+                return {'status': 'success', 'message': f'Cập nhật thành công {updated_count}/{len(apis)} BitLaunch APIs'}
+                
+            except Exception as e:
+                logger.error(f"Error in update-bitlaunch-apis: {e}")
+                return {'status': 'error', 'error': 'Lỗi hệ thống'}, 500
+
+        @app.route('/api/update-bitlaunch-vps', methods=['GET'])
+        def api_update_bitlaunch_vps():
+            """Cập nhật danh sách VPS BitLaunch - có thể gọi từ cron job"""
+            try:
+                from core.models import BitLaunchAPI
+                from core.api_clients.bitlaunch import BitLaunchClient
+                
+                apis = BitLaunchAPI.query.filter_by(is_active=True).all()
+                logger.info(f"Found {len(apis)} BitLaunch APIs for VPS update")
+                
+                total_updated = 0
+                for api in apis:
+                    try:
+                        logger.info(f"Updating BitLaunch VPS for API {api.id}")
+                        client = BitLaunchClient(api.api_key)
+                        servers = client.get_servers()
+                        manager.update_bitlaunch_vps_list(api.id, servers)
+                        total_updated += len(servers) if servers else 0
+                        logger.info(f"Updated {len(servers) if servers else 0} VPS for API {api.id}")
+                    except Exception as e:
+                        logger.error(f"Error updating BitLaunch VPS for API {api.id}: {e}")
+                        continue
+                
+                logger.info(f"Successfully updated {total_updated} BitLaunch VPS instances")
+                return {'status': 'success', 'message': f'Cập nhật thành công {total_updated} VPS BitLaunch'}
+                
+            except Exception as e:
+                logger.error(f"Error in update-bitlaunch-vps: {e}")
+                return {'status': 'error', 'error': 'Lỗi hệ thống'}, 500
+
+        @app.route('/api/update-zingproxy-accounts', methods=['GET'])
+        def api_update_zingproxy_accounts():
+            """Cập nhật thông tin tài khoản ZingProxy - có thể gọi từ cron job"""
+            try:
+                from core.api_clients.zingproxy import ZingProxyClient, ZingProxyAPIError
+                
+                accs = manager.get_zingproxy_accounts_needing_update()
+                logger.info(f"Found {len(accs)} ZingProxy accounts needing update")
+                
+                updated_count = 0
+                total_proxies_imported = 0
+                
+                for acc in accs:
+                    try:
+                        logger.info(f"Updating ZingProxy account {acc.id} ({acc.email})")
+                        client = ZingProxyClient(access_token=acc.access_token)
+                        
+                        # Cập nhật thông tin tài khoản
+                        user_info = client.get_account_details()
+                        balance = user_info.get('balance', 0)
+                        manager.update_zingproxy_account(acc.id, balance)
+                        logger.info(f"Updated balance for account {acc.id}: ${balance}")
+                        
+                        # Cập nhật danh sách proxy trong ZingProxy
+                        proxies = client.get_all_active_proxies()
+                        manager.update_zingproxy_list(acc.id, proxies)
+                        logger.info(f"Updated {len(proxies)} proxies for account {acc.id}")
+                        
+                        # Tự động import proxy vào hệ thống quản lý proxy
+                        try:
+                            zingproxy_data = []
+                            for proxy in proxies:
+                                zingproxy_data.append({
+                                    'proxy_id': proxy.get('proxy_id'),
+                                    'ip': proxy.get('ip'),
+                                    'port': proxy.get('port'),
+                                    'port_socks5': proxy.get('port_socks5'),
+                                    'username': proxy.get('username'),
+                                    'password': proxy.get('password'),
+                                    'status': proxy.get('status'),
+                                    'expire_at': proxy.get('expire_at'),
+                                    'location': proxy.get('location'),
+                                    'type': proxy.get('type'),
+                                    'note': proxy.get('note'),
+                                    'auto_renew': proxy.get('auto_renew')
+                                })
+                            
+                            if zingproxy_data:
+                                imported_count = manager.import_proxies_from_zingproxy(acc.user_id, zingproxy_data)
+                                total_proxies_imported += imported_count
+                                logger.info(f"Imported {imported_count} proxies to proxy management system for account {acc.id}")
+                        except Exception as e:
+                            logger.error(f"Error importing proxies to management system for account {acc.id}: {e}")
+                        
+                        updated_count += 1
+                    except ZingProxyAPIError as e:
+                        logger.error(f"ZingProxy API error for account {acc.id}: {e}")
+                        continue
+                    except Exception as e:
+                        logger.error(f"Error updating ZingProxy account {acc.id}: {e}")
+                        continue
+                
+                logger.info(f"Successfully updated {updated_count}/{len(accs)} ZingProxy accounts")
+                logger.info(f"Total proxies imported to management system: {total_proxies_imported}")
+                return {'status': 'success', 'message': f'Cập nhật thành công {updated_count}/{len(accs)} tài khoản ZingProxy, import {total_proxies_imported} proxy'}
+                
+            except Exception as e:
+                logger.error(f"Error in update-zingproxy-accounts: {e}")
+                return {'status': 'error', 'error': 'Lỗi hệ thống'}, 500
+
+        @app.route('/api/update-cloudfly-apis', methods=['GET'])
+        def api_update_cloudfly_apis():
+            """Cập nhật thông tin tài khoản CloudFly - có thể gọi từ cron job"""
+            try:
+                from core.api_clients.cloudfly import CloudFlyClient, CloudFlyAPIError
+                
+                apis = manager.get_cloudfly_apis_needing_update()
+                logger.info(f"Found {len(apis)} CloudFly APIs needing update")
+                
+                updated_count = 0
+                for api in apis:
+                    try:
+                        logger.info(f"Updating CloudFly API {api.id} ({api.email})")
+                        client = CloudFlyClient(api.api_token)
+                        
+                        # Cập nhật thông tin tài khoản
+                        user_info = client.get_user_info()
+                        
+                        # CloudFly API có structure phức tạp: clients[0].wallet.main_balance
+                        main_balance = 0
+                        if 'clients' in user_info and len(user_info['clients']) > 0:
+                            wallet = user_info['clients'][0].get('wallet', {})
+                            main_balance = wallet.get('main_balance', 0)
+                        
+                        # CloudFly API không có account_limit
+                        manager.update_cloudfly_info(api.id, main_balance, 0)
+                        logger.info(f"Updated balance for API {api.id}: ${main_balance}")
+                        
+                        updated_count += 1
+                    except CloudFlyAPIError as e:
+                        logger.error(f"CloudFly API error for API {api.id}: {e}")
+                        continue
+                    except Exception as e:
+                        logger.error(f"Error updating CloudFly API {api.id}: {e}")
+                        continue
+                
+                logger.info(f"Successfully updated {updated_count}/{len(apis)} CloudFly APIs")
+                return {'status': 'success', 'message': f'Cập nhật thành công {updated_count}/{len(apis)} CloudFly APIs'}
+                
+            except Exception as e:
+                logger.error(f"Error in update-cloudfly-apis: {e}")
+                return {'status': 'error', 'error': 'Lỗi hệ thống'}, 500
+
+        @app.route('/api/update-cloudfly-vps', methods=['GET'])
+        def api_update_cloudfly_vps():
+            """Cập nhật danh sách VPS CloudFly - có thể gọi từ cron job"""
+            try:
+                from core.api_clients.cloudfly import CloudFlyClient, CloudFlyAPIError
+                from core.models import CloudFlyAPI
+                
+                apis = CloudFlyAPI.query.filter_by(is_active=True).all()
+                logger.info(f"Found {len(apis)} CloudFly APIs for VPS update")
+                
+                total_updated = 0
+                failed_apis = 0
+                
+                for api in apis:
+                    try:
+                        logger.info(f"Updating VPS for CloudFly API {api.id} ({api.email})")
+                        client = CloudFlyClient(api.api_token)
+                        instances = client.list_instances()
+                        
+                        if instances:
+                            manager.update_cloudfly_vps_list(api.id, instances)
+                            total_updated += len(instances)
+                            logger.info(f"Updated {len(instances)} VPS instances for API {api.id}")
+                        else:
+                            logger.info(f"No VPS instances found for API {api.id}")
+                            
+                    except CloudFlyAPIError as e:
+                        logger.error(f"CloudFly API error for API {api.id}: {e}")
+                        failed_apis += 1
+                        continue
+                    except Exception as e:
+                        logger.error(f"Error updating CloudFly VPS for API {api.id}: {e}")
+                        failed_apis += 1
+                        continue
+                
+                logger.info(f"CloudFly VPS update completed: {total_updated} instances updated, {failed_apis} APIs failed")
+                return {'status': 'success', 'message': f'Cập nhật thành công {total_updated} VPS CloudFly, {failed_apis} APIs lỗi'}
+                
+            except Exception as e:
+                logger.error(f"Error in update-cloudfly-vps: {e}")
+                return {'status': 'error', 'error': 'Lỗi hệ thống'}, 500
+
+        @app.route('/api/send-daily-summary', methods=['GET'])
+        def api_send_daily_summary():
+            """Gửi báo cáo tổng hợp hàng ngày - có thể gọi từ cron job"""
+            try:
+                from core.models import RocketChatConfig, User
+                from core.rocket_chat import send_daily_account_summary
+                
+                configs = RocketChatConfig.query.filter_by(is_active=True).all()
+                logger.info(f"Found {len(configs)} active RocketChat configurations")
+                
+                success_count = 0
+                for config in configs:
+                    try:
+                        user = User.query.get(config.user_id)
+                        if not user:
+                            logger.warning(f"User {config.user_id} not found for config {config.id}")
+                            continue
+                        
+                        logger.info(f"Sending daily summary to user {user.username}")
+                        success = notifier.send_daily_summary_rocketchat(user, config)
+                        
+                        if success:
+                            success_count += 1
+                            logger.info(f"Daily summary sent successfully for user {user.username}")
+                        else:
+                            logger.error(f"Failed to send daily summary for user {user.username}")
+                            
+                    except Exception as e:
+                        logger.error(f"Error sending daily summary to {user.username}: {e}")
+                        continue
+                
+                logger.info(f"Daily summary completed: {success_count}/{len(configs)} users")
+                return {'status': 'success', 'message': f'Gửi báo cáo tổng hợp thành công cho {success_count}/{len(configs)} users'}
+                
+            except Exception as e:
+                logger.error(f"Error in send-daily-summary: {e}")
+                return {'status': 'error', 'error': 'Lỗi hệ thống'}, 500
+
+        @app.route('/api/send-weekly-report', methods=['GET'])
+        def api_send_weekly_report():
+            """Gửi báo cáo tuần - có thể gọi từ cron job"""
+            try:
+                # TODO: Implement weekly report functionality
+                logger.info("Weekly report endpoint called - functionality not yet implemented")
+                return {'status': 'success', 'message': 'Báo cáo tuần chưa được triển khai'}
+                
+            except Exception as e:
+                logger.error(f"Error in send-weekly-report: {e}")
+                return {'status': 'error', 'error': 'Lỗi hệ thống'}, 500
+
         return app
         
     except Exception as e:

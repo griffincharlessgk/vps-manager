@@ -1,0 +1,51 @@
+# VPS Manager Crontab Configuration
+# Sao chép nội dung này vào crontab: crontab -e
+
+# ===== ZINGPROXY JOBS =====
+# Đồng bộ proxy ZingProxy mỗi ngày lúc 2:00 sáng
+0 2 * * * /home/ubuntu/vps-manager/scripts/cron_job.sh zingproxy-sync
+
+# Cập nhật tài khoản ZingProxy mỗi ngày lúc 7:00 sáng
+0 7 * * * /home/ubuntu/vps-manager/scripts/cron_job.sh zingproxy-update
+
+# Đồng bộ proxy ZingProxy mỗi ngày lúc 8:00 sáng
+0 8 * * * /home/ubuntu/vps-manager/scripts/cron_job.sh zingproxy-sync
+
+# Cập nhật ZingProxy mỗi 6 giờ
+0 */6 * * * /home/ubuntu/vps-manager/scripts/cron_job.sh zingproxy-update
+
+# Đồng bộ proxy ZingProxy mỗi 2 giờ
+0 */2 * * * /home/ubuntu/vps-manager/scripts/cron_job.sh zingproxy-sync
+
+# ===== BITLAUNCH JOBS =====
+# Cập nhật BitLaunch APIs mỗi ngày lúc 6:00 sáng
+0 6 * * * /home/ubuntu/vps-manager/scripts/cron_job.sh bitlaunch-apis
+
+# Cập nhật BitLaunch VPS mỗi ngày lúc 6:30 sáng
+30 6 * * * /home/ubuntu/vps-manager/scripts/cron_job.sh bitlaunch-vps
+
+# ===== CLOUDFLY JOBS =====
+# Cập nhật CloudFly APIs mỗi ngày lúc 8:00 sáng
+0 8 * * * /home/ubuntu/vps-manager/scripts/cron_job.sh cloudfly-apis
+
+# Cập nhật CloudFly VPS mỗi ngày lúc 8:30 sáng
+30 8 * * * /home/ubuntu/vps-manager/scripts/cron_job.sh cloudfly-vps
+
+# Cập nhật CloudFly mỗi 6 giờ
+0 */6 * * * /home/ubuntu/vps-manager/scripts/cron_job.sh cloudfly-apis
+0 */6 * * * /home/ubuntu/vps-manager/scripts/cron_job.sh cloudfly-vps
+
+# ===== NOTIFICATION JOBS =====
+# Gửi thông báo hết hạn và chi tiết tài khoản mỗi ngày lúc 9:00 sáng
+0 9 * * * /home/ubuntu/vps-manager/scripts/cron_job.sh notifications
+
+# Gửi báo cáo tuần mỗi Chủ nhật lúc 10:00 sáng
+0 10 * * 0 /home/ubuntu/vps-manager/scripts/cron_job.sh weekly
+
+# ===== DAILY TASKS =====
+# Chạy tất cả tác vụ hàng ngày lúc 9:00 sáng (backup)
+0 9 * * * /home/ubuntu/vps-manager/scripts/cron_job.sh daily
+
+# ===== LOG ROTATION =====
+# Xoay log file mỗi tuần (giữ lại 4 tuần)
+0 0 * * 0 find /home/ubuntu/vps-manager/logs -name "*.log" -mtime +28 -delete
