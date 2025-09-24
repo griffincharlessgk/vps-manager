@@ -4,23 +4,26 @@ A comprehensive VPS and account management system with automated notifications, 
 
 ## ✨ Features
 
-- **Multi-Provider Support**: BitLaunch, ZingProxy
-- **Automated Notifications**: Telegram integration with customizable schedules
+- **Multi-Provider Support**: BitLaunch, ZingProxy, CloudFly
+- **Automated Notifications**: RocketChat integration with customizable schedules
+- **Cron Job System**: Replaceable scheduler with system cron jobs
 - **User Management**: Role-based access control with admin/user permissions
 - **Data Encryption**: Sensitive data encrypted at rest using Fernet
 - **Real-time Monitoring**: Dashboard with expiry warnings and status tracking
 - **API Integration**: Direct integration with provider APIs for real-time data
+- **Proxy Management**: Automated proxy synchronization and management
 - **Cross-Platform**: Support for Windows, Linux, and macOS
 
 ## 🔧 Technology Stack
 
 - **Backend**: Flask, SQLAlchemy
 - **Database**: PostgreSQL (production), SQLite (development)
-- **Scheduler**: APScheduler
+- **Scheduler**: System Cron Jobs (replaces APScheduler)
 - **Encryption**: Cryptography (Fernet)
-- **API Integration**: pybitlaunch, requests
+- **API Integration**: pybitlaunch, requests, custom clients
 - **Frontend**: HTML, CSS, JavaScript, Bootstrap
 - **Deployment**: Docker, Gunicorn
+- **Notifications**: RocketChat API
 
 ## 🚀 Quick Start
 
@@ -29,6 +32,7 @@ A comprehensive VPS and account management system with automated notifications, 
 - Python 3.11+
 - PostgreSQL 12+ (for production)
 - Docker (optional)
+- Cron service (for automated tasks)
 
 ### Installation
 
@@ -61,6 +65,11 @@ A comprehensive VPS and account management system with automated notifications, 
 5. **Initialize database**
    ```bash
    python scripts/init_db.py
+   ```
+
+6. **Set up cron jobs (optional)**
+   ```bash
+   ./scripts/install_cron.sh
    ```
 
 ## 🏃‍♂️ Running the Application
@@ -103,6 +112,7 @@ http://localhost:5000
 ✅ **Non-root Docker**: Container runs as non-root user
 ✅ **Logging**: Structured logging with security event tracking
 ✅ **Error Handling**: Proper error handling and logging
+✅ **Cron Job Security**: Secure cron job execution with proper permissions
 
 ## 🌐 Environment Variables
 
@@ -110,7 +120,6 @@ http://localhost:5000
 |----------|-------------|----------|---------|
 | `SECRET_KEY` | Flask secret key | Yes | - |
 | `DATABASE_URL` | Database connection string | No | `sqlite:///users.db` |
-| `TELEGRAM_TOKEN` | Telegram bot token | No | - |
 | `ENCRYPTION_KEY` | Encryption key for sensitive data | No | Auto-generated |
 | `LOG_LEVEL` | Logging level | No | `INFO` |
 | `SESSION_COOKIE_SECURE` | Secure cookies | No | `False` |
@@ -126,6 +135,10 @@ http://localhost:5000
 - `bitlaunch_vps`: VPS from BitLaunch
 - `zingproxy_accounts`: ZingProxy account information
 - `zingproxies`: Proxy information from ZingProxy
+- `cloudfly_apis`: CloudFly API credentials
+- `cloudfly_vps`: VPS from CloudFly
+- `rocket_chat_configs`: RocketChat notification configurations
+- `proxies`: Managed proxy information
 
 ## 🔌 API Endpoints
 
@@ -150,16 +163,80 @@ http://localhost:5000
 - `POST /api/bitlaunch-save-api` - Save API credentials
 - `GET /api/bitlaunch-apis` - List saved APIs
 - `POST /api/bitlaunch-update-all` - Update all APIs
+- `GET /api/update-bitlaunch-apis` - Update BitLaunch APIs (cron job)
+- `GET /api/update-bitlaunch-vps` - Update BitLaunch VPS (cron job)
 
 ### ZingProxy Integration
 - `POST /api/zingproxy-login` - Add ZingProxy account
 - `GET /api/zingproxy-accounts` - List ZingProxy accounts
 - `POST /api/zingproxy-update-proxies/<id>` - Update proxies
+- `GET /api/update-zingproxy-accounts` - Update ZingProxy accounts (cron job)
+- `GET /api/sync-zingproxy-proxies` - Sync ZingProxy proxies (cron job)
+
+### CloudFly Integration
+- `POST /api/cloudfly-save-api` - Save API credentials
+- `GET /api/cloudfly-apis` - List saved APIs
+- `GET /api/cloudfly/vps` - List CloudFly VPS
+- `GET /api/update-cloudfly-apis` - Update CloudFly APIs (cron job)
+- `GET /api/update-cloudfly-vps` - Update CloudFly VPS (cron job)
+
+### Proxy Management
+- `GET /api/proxies` - List all proxies
+- `POST /api/proxies` - Add new proxy
+- `PUT /api/proxies/<id>` - Update proxy
+- `DELETE /api/proxies/<id>` - Delete proxy
+- `GET /api/proxies/sync-status` - Get proxy sync status
 
 ### Notifications
-- `POST /api/notify-telegram` - Send Telegram notification
-- `POST /api/send-all-notifications` - Send to all users
+- `GET /api/send-expiry-notifications` - Send expiry notifications (cron job)
+- `GET /api/send-account-details` - Send account details (cron job)
+- `GET /api/send-daily-summary` - Send daily summary (cron job)
+- `GET /api/send-weekly-report` - Send weekly report (cron job)
 - `GET /api/expiry-warnings` - Get expiry warnings
+
+### RocketChat Integration
+- `POST /api/rocket-chat/save-config` - Save RocketChat configuration
+- `GET /api/rocket-chat/channels` - Get RocketChat channels
+- `POST /api/rocket-chat/send-account-notification` - Send account notification
+- `POST /api/rocket-chat/send-daily-summary` - Send daily summary
+- `POST /api/rocket-chat/send-detailed-info` - Send detailed account info
+
+## ⏰ Cron Job System
+
+The system uses cron jobs instead of APScheduler for better reliability and system integration.
+
+### Available Cron Jobs
+
+- **ZingProxy Sync**: Every 2 hours and daily at 2:00 AM
+- **BitLaunch Updates**: Daily at 6:00 AM (APIs) and 6:30 AM (VPS)
+- **CloudFly Updates**: Daily at 8:00 AM (APIs) and 8:30 AM (VPS)
+- **Notifications**: Daily at 9:00 AM (expiry + account details)
+- **Weekly Reports**: Every Sunday at 10:00 AM
+
+### Cron Job Management
+
+```bash
+# Install cron jobs
+./scripts/install_cron.sh
+
+# Manual execution
+./scripts/cron_job.sh notifications
+./scripts/cron_job.sh daily
+./scripts/cron_job.sh zingproxy-sync
+
+# View cron jobs
+crontab -l
+
+# Edit cron jobs
+crontab -e
+```
+
+### Cron Job Scripts
+
+- `scripts/cron_job.sh` - Main cron job script
+- `scripts/install_cron.sh` - Installation script
+- `scripts/crontab_example.txt` - Example crontab configuration
+- `scripts/README_CRON.md` - Detailed cron job documentation
 
 ## 🐳 Docker Deployment
 
@@ -190,10 +267,24 @@ docker run -p 5000:5000 -e DATABASE_URL=postgresql://... vps-manager
 - `logs/app.log` - General application logs
 - `logs/error.log` - Error logs
 - `logs/security.log` - Security events
+- `logs/cron_job.log` - Cron job execution logs
 
 ### Health Checks
 ```bash
 curl http://localhost:5000/me
+curl http://localhost:5000/api/send-expiry-notifications
+```
+
+### Monitoring Cron Jobs
+```bash
+# View cron job logs
+tail -f logs/cron_job.log
+
+# Check cron service
+sudo systemctl status cron
+
+# View system cron logs
+sudo journalctl -u cron
 ```
 
 ## 🔄 Backup and Maintenance
@@ -207,9 +298,16 @@ pg_dump vps_manager > backup.sql
 cp instance/users.db backup.db
 ```
 
-### Automated Backup (Windows)
+### Automated Backup
 ```bash
-scripts/backup_windows.bat
+# Add to crontab for automated backup
+0 2 * * * /path/to/backup_script.sh
+```
+
+### Log Rotation
+```bash
+# Automatic log rotation (included in crontab)
+0 0 * * 0 find /home/ubuntu/vps-manager/logs -name "*.log" -mtime +28 -delete
 ```
 
 ## 🚨 Troubleshooting
@@ -230,10 +328,16 @@ scripts/backup_windows.bat
    - Ensure `ENCRYPTION_KEY` is set
    - Don't change encryption key after data is stored
 
-4. **Telegram Notifications Not Working**
-   - Verify `TELEGRAM_TOKEN` is correct
-   - Check bot permissions
-   - Verify chat IDs
+4. **Cron Jobs Not Running**
+   - Check cron service: `sudo systemctl status cron`
+   - Verify crontab: `crontab -l`
+   - Check logs: `tail -f logs/cron_job.log`
+   - Test manually: `./scripts/cron_job.sh notifications`
+
+5. **RocketChat Notifications Not Working**
+   - Verify RocketChat configuration in UI
+   - Check API credentials and room IDs
+   - Test endpoint: `curl http://localhost:5000/api/send-expiry-notifications`
 
 ### Debug Mode
 ```bash
@@ -241,6 +345,48 @@ export FLASK_ENV=development
 export LOG_LEVEL=DEBUG
 cd ui
 python -m flask run
+```
+
+### Testing Cron Jobs
+```bash
+# Test individual tasks
+./scripts/cron_job.sh zingproxy-sync
+./scripts/cron_job.sh notifications
+./scripts/cron_job.sh daily
+
+# Test API endpoints
+curl http://localhost:5000/api/send-expiry-notifications
+curl http://localhost:5000/api/send-account-details
+```
+
+## 📁 Project Structure
+
+```
+vps-manager/
+├── auth/                    # Authentication module
+├── core/                    # Core functionality
+│   ├── api_clients/         # API clients for providers
+│   ├── models.py           # Database models
+│   ├── manager.py          # Main manager class
+│   ├── notifier.py         # Notification system
+│   ├── rocket_chat.py      # RocketChat integration
+│   └── scheduler.py        # Legacy scheduler (deprecated)
+├── ui/                     # Web interface
+│   ├── static/            # CSS, JS, images
+│   ├── templates/         # HTML templates
+│   └── app.py            # Flask application
+├── scripts/               # Utility scripts
+│   ├── cron_job.sh       # Main cron job script
+│   ├── install_cron.sh   # Cron installation
+│   └── init_db.py        # Database initialization
+├── tests/                 # Test files
+├── logs/                  # Log files
+├── instance/              # Database files
+├── migrations/            # Database migrations
+├── docker-compose.yml     # Docker configuration
+├── Dockerfile            # Docker image
+├── requirements.txt      # Python dependencies
+└── README.md            # This file
 ```
 
 ## 🤝 Contributing
@@ -260,11 +406,16 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 For support, please:
 1. Check the [Troubleshooting](#-troubleshooting) section
 2. Review the logs in `logs/` directory
-3. Open an issue on GitHub
-4. Contact the development team
+3. Check cron job logs: `tail -f logs/cron_job.log`
+4. Open an issue on GitHub
+5. Contact the development team
 
 ## 🎯 Roadmap
 
+- [x] Multi-provider support (BitLaunch, ZingProxy, CloudFly)
+- [x] RocketChat notifications
+- [x] Cron job system
+- [x] Proxy management
 - [ ] Multi-language support
 - [ ] Mobile app
 - [ ] Advanced analytics dashboard
@@ -272,14 +423,15 @@ For support, please:
 - [ ] API rate limiting
 - [ ] Advanced backup features
 - [ ] Real-time notifications via WebSocket
+- [ ] Health monitoring dashboard
 
 ## 🙏 Acknowledgments
 
 - Flask team for the excellent web framework
 - PostgreSQL team for the robust database
-- Telegram team for the messaging API
+- RocketChat team for the messaging platform
 - All contributors and users
 
 ---
 
-**Made with ❤️ for VPS management** 
+**Made with ❤️ for VPS management**

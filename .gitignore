@@ -110,6 +110,9 @@ myenv/
 ENV/
 env.bak/
 venv.bak/
+# Text files (except requirements.txt)
+*.txt
+!requirements.txt
 
 # Spyder project settings
 .spyderproject
