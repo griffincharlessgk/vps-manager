@@ -1,0 +1,125 @@
+version: '3.8'
+services:
+  app:
+    build: .
+    ports:
+      - "5000:5000"
+    volumes:
+      # Database files - CRITICAL
+      - ./instance:/app/instance
+      - ./migrations:/app/migrations
+      
+      # Logs directory - CRITICAL
+      - ./logs:/app/logs
+      
+      # Scripts directory - CRITICAL (for cron jobs)
+      - ./scripts:/app/scripts
+      
+      # Environment file - CRITICAL
+      - ./.env:/app/.env
+      
+      # Backup directory - CRITICAL
+      - ./backups:/app/backups
+      
+      # Production keys backup - CRITICAL
+      - ./production_keys_backup.txt:/app/production_keys_backup.txt
+      
+      # Additional data persistence
+      - vps_data:/app/data
+      - cron_logs:/app/cron_logs
+      
+    environment:
+      - FLASK_ENV=production
+      - DATABASE_URL=sqlite:///instance/users.db
+      - LOG_LEVEL=INFO
+      - SESSION_COOKIE_SECURE=true
+      
+    restart: unless-stopped
+    
+    # Health check
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/me"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    
+    # Resource limits
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: '0.5'
+        reservations:
+          memory: 256M
+          cpus: '0.25'
+    
+    # Security
+    security_opt:
+      - no-new-privileges:true
+    
+    # User
+    user: "1000:1000"
+    
+    # Logging
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # Optional: PostgreSQL database
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      - POSTGRES_DB=vps_manager
+      - POSTGRES_USER=vps_user
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-vps_password}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./backups/postgres:/backups
+    ports:
+      - "5432:5432"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U vps_user -d vps_manager"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Optional: Redis for caching
+  redis:
+    image: redis:7-alpine
+    volumes:
+      - redis_data:/data
+    ports:
+      - "6379:6379"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Optional: Nginx reverse proxy
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./ssl:/etc/nginx/ssl:ro
+    depends_on:
+      - app
+    restart: unless-stopped
+
+volumes:
+  vps_data:
+    driver: local
+  cron_logs:
+    driver: local
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local

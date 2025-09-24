@@ -5,6 +5,32 @@ services:
     ports:
       - "5000:5000"
     volumes:
-      - ./users.db:/app/users.db
+      # Database files
+      - ./instance:/app/instance
+      - ./migrations:/app/migrations
+      
+      # Logs directory
+      - ./logs:/app/logs
+      
+      # Scripts directory (for cron jobs)
+      - ./scripts:/app/scripts
+      
+      # Environment file
+      - ./.env:/app/.env
+      
+      # Backup directory (if exists)
+      - ./backups:/app/backups
+      
+      # Production keys backup
+      - ./production_keys_backup.txt:/app/production_keys_backup.txt
+      
     environment:
-      - FLASK_ENV=production 
+      - FLASK_ENV=production
+      - DATABASE_URL=sqlite:///instance/users.db
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/me"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s 
