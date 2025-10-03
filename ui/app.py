@@ -970,8 +970,9 @@ def create_app():
                 return {'status': 'error', 'error': 'API key không hợp lệ hoặc không lấy được thông tin tài khoản'}, 400
             
             email = account_info.get('email')
-            balance = account_info.get('balance', 0)
-            limit = account_info.get('limit', 0)
+            # BitLaunch API trả về balance và limit theo đơn vị milli-dollars (1/1000), cần chia cho 1000
+            balance = account_info.get('balance', 0) / 1000
+            limit = account_info.get('limit', 0) / 1000
             
             # Lưu vào database
             api_obj = manager.add_bitlaunch_api(
@@ -1020,8 +1021,9 @@ def create_app():
             client = BitLaunchClient(api_obj.api_key)
             account_info = client.get_account_info()
             
-            balance = account_info.get('balance', 0)
-            limit = account_info.get('limit', 0)
+            # BitLaunch API trả về balance và limit theo đơn vị milli-dollars (1/1000), cần chia cho 1000
+            balance = account_info.get('balance', 0) / 1000
+            limit = account_info.get('limit', 0) / 1000
             
             manager.update_bitlaunch_info(api_id, balance, limit)
             
@@ -1069,8 +1071,9 @@ def create_app():
                 client = BitLaunchClient(api.api_key)
                 account_info = client.get_account_info()
                 
-                balance = account_info.get('balance', 0)
-                limit = account_info.get('limit', 0)
+                # BitLaunch API trả về balance và limit theo đơn vị milli-dollars (1/1000), cần chia cho 1000
+                balance = account_info.get('balance', 0) / 1000
+                limit = account_info.get('limit', 0) / 1000
                 
                 manager.update_bitlaunch_info(api.id, balance, limit)
                 updated_count += 1

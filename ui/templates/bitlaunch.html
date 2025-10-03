@@ -127,10 +127,13 @@ async function loadApis() {
     
     json.apis.forEach(api => {
       const lastUpdated = api.last_updated ? new Date(api.last_updated).toLocaleString('vi-VN') : 'Chưa cập nhật';
+      // Format balance và limit với 3 chữ số thập phân (API trả về milli-dollars)
+      const balanceFormatted = (api.balance || 0).toFixed(3);
+      const limitFormatted = (api.limit || 0).toFixed(3);
       html += `<tr>
         <td>${api.email}</td>
-        <td>$${api.balance || 0}</td>
-        <td>$${api.limit || 0}</td>
+        <td>$${balanceFormatted}</td>
+        <td>$${limitFormatted}</td>
         <td>${lastUpdated}</td>
         <td>${api.update_frequency} ngày</td>
         <td>

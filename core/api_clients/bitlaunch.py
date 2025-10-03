@@ -8,6 +8,13 @@ class BitLaunchClient:
         self.client = pybitlaunch.Client(token)
 
     def get_account_info(self):
+        """
+        Lấy thông tin tài khoản BitLaunch.
+        
+        Lưu ý: API trả về balance và limit theo đơn vị MILLI-DOLLARS (1/1000 dollar)
+        Ví dụ: 1063 = $1.063
+        Cần chia cho 1000 để chuyển sang đơn vị dollars khi sử dụng.
+        """
         return self.client.Account.Show()
 
     def get_account_usage(self, month=None):
