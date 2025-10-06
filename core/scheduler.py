@@ -292,6 +292,132 @@ def start_scheduler():
             
             logger.info(f"[Scheduler] CloudFly VPS update completed: {total_updated} instances updated, {failed_apis} APIs failed")
 
+    def check_account_alerts_5min():
+        """Kiểm tra và gửi cảnh báo tài khoản sắp hết hạn và balance thấp"""
+        with app.app_context():
+            try:
+                from core.models import RocketChatConfig, User
+                from core.rocket_chat import send_account_expiry_notification
+                from core import manager
+                
+                logger.info("=" * 70)
+                logger.info("[Scheduler] 🔔 Checking account alerts (12-hour interval)")
+                logger.info("=" * 70)
+                
+                # Lấy tất cả cấu hình Rocket Chat
+                configs = RocketChatConfig.query.filter_by(is_active=True).all()
+                
+                if not configs:
+                    logger.info("[Scheduler] ⚠️ No Rocket Chat configurations found")
+                    return
+                
+                logger.info(f"[Scheduler] Found {len(configs)} Rocket Chat configurations")
+                
+                for config in configs:
+                    try:
+                        user = User.query.get(config.user_id)
+                        if not user:
+                            logger.warning(f"[Scheduler] User {config.user_id} not found")
+                            continue
+                    
+                        logger.info(f"[Scheduler] 👤 Processing user: {user.username}")
+                    
+                        # Lấy danh sách tài khoản từ TẤT CẢ nguồn
+                        # 1. Tài khoản thủ công
+                        manual_acc_list = manager.list_accounts()
+                        for acc in manual_acc_list:
+                            if 'service' not in acc:
+                                acc['service'] = ''
+                            acc['source'] = 'manual'
+                    
+                        # 2. Tài khoản từ BitLaunch
+                        bitlaunch_apis = manager.list_bitlaunch_apis(config.user_id)
+                        bitlaunch_acc_list = []
+                        for api in bitlaunch_apis:
+                            acc = {
+                                'id': f"bitlaunch_{api['id']}",
+                                'username': api['email'],
+                                'service': 'BitLaunch',
+                                'expiry': None,
+                                'balance': api.get('balance', 0),
+                                'source': 'bitlaunch'
+                            }
+                            bitlaunch_acc_list.append(acc)
+                    
+                        # 3. Tài khoản từ ZingProxy
+                        zingproxy_acc_list = manager.list_zingproxy_accounts(config.user_id)
+                        for acc in zingproxy_acc_list:
+                            acc['source'] = 'zingproxy'
+                            acc['username'] = acc.get('email', 'N/A')
+                            acc['service'] = 'ZingProxy'
+                            acc['expiry'] = None
+                            acc['balance'] = acc.get('balance', 0)
+                    
+                        # 4. Tài khoản từ CloudFly
+                        cloudfly_apis = manager.list_cloudfly_apis(config.user_id)
+                        cloudfly_acc_list = []
+                        for api in cloudfly_apis:
+                            acc = {
+                                'id': f"cloudfly_{api['id']}",
+                                'username': api['email'],
+                                'service': 'CloudFly',
+                                'expiry': None,
+                                'balance': api.get('balance', 0),
+                                'source': 'cloudfly'
+                            }
+                            cloudfly_acc_list.append(acc)
+                    
+                        # Kết hợp tất cả tài khoản
+                        all_accounts = manual_acc_list + bitlaunch_acc_list + zingproxy_acc_list + cloudfly_acc_list
+                    
+                        logger.info(f"[Scheduler] 📊 Found {len(all_accounts)} total accounts:")
+                        logger.info(f"[Scheduler]   - Manual: {len(manual_acc_list)}")
+                        logger.info(f"[Scheduler]   - BitLaunch: {len(bitlaunch_acc_list)}")
+                        logger.info(f"[Scheduler]   - ZingProxy: {len(zingproxy_acc_list)}")
+                        logger.info(f"[Scheduler]   - CloudFly: {len(cloudfly_acc_list)}")
+                        
+                        # Kiểm tra balance thấp
+                        low_balance_count = 0
+                        for acc in all_accounts:
+                            balance = acc.get('balance', 0)
+                            source = acc.get('source', '')
+                            if source == 'bitlaunch' and balance < 5:
+                                low_balance_count += 1
+                                logger.warning(f"[Scheduler] 💰 BitLaunch low balance: {acc.get('username')} (${balance:.2f} < $5)")
+                            elif source == 'zingproxy' and balance < 100000:
+                                low_balance_count += 1
+                                logger.warning(f"[Scheduler] 💰 ZingProxy low balance: {acc.get('username')} ({balance:,.0f} VND < 100,000 VND)")
+                            elif source == 'cloudfly' and balance < 100000:
+                                low_balance_count += 1
+                                logger.warning(f"[Scheduler] 💰 CloudFly low balance: {acc.get('username')} ({balance:,.0f} VND < 100,000 VND)")
+                        
+                        logger.info(f"[Scheduler] 🚨 Found {low_balance_count} accounts with low balance")
+                    
+                        # Gửi thông báo cảnh báo (bao gồm cả balance thấp và tài khoản sắp hết hạn)
+                        alert_success = send_account_expiry_notification(
+                            room_id=config.room_id,
+                            auth_token=config.auth_token,
+                            user_id=config.user_id_rocket,
+                            accounts=all_accounts,
+                            warning_days=user.notify_days or 7
+                        )
+                    
+                        if alert_success:
+                            logger.info(f"[Scheduler] ✅ Alert sent successfully to user {user.username}")
+                        else:
+                            logger.error(f"[Scheduler] ❌ Failed to send alert to user {user.username}")
+                        
+                    except Exception as e:
+                        logger.error(f"[Scheduler] ❌ Error processing user {config.id}: {e}")
+                        continue
+                
+                logger.info("=" * 70)
+                logger.info("[Scheduler] 🏁 Account alerts check completed")
+                logger.info("=" * 70)
+                
+            except Exception as e:
+                logger.error(f"[Scheduler] ❌ Error in check_account_alerts_5min: {e}")
+
     def send_daily_rocket_chat_notifications():
         """Gửi thông báo hàng ngày đến Rocket Chat cho tất cả users có cấu hình"""
         with app.app_context():
@@ -426,6 +552,10 @@ def start_scheduler():
     
     # Lên lịch gửi báo cáo tổng hợp mỗi 5 phút để kiểm tra notify_hour của từng user
     scheduler.add_job(send_daily_summary, 'interval', minutes=5, id='daily_summary')
+    
+    # Lên lịch kiểm tra và gửi cảnh báo tài khoản mỗi 12 giờ
+    # Job này sẽ gửi thông báo ngay lập tức, không cần chờ đến notify_hour
+    scheduler.add_job(check_account_alerts_5min, 'interval', hours=12, id='account_alerts_12h')
     
     # Lên lịch gửi báo cáo tuần vào chủ nhật lúc 10h sáng
     scheduler.add_job(send_weekly_report, 'cron', day_of_week='sun', hour=10, minute=0, id='weekly_report')
