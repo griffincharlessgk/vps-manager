@@ -77,15 +77,31 @@ def start_scheduler():
         """Tự động cập nhật thông tin tài khoản BitLaunch theo tần suất"""
         logger.info("[Scheduler] Running update_bitlaunch_apis job")
         with app.app_context():
+            from core.api_clients.bitlaunch import BitLaunchClient, BitLaunchAPIError
+            
             apis = manager.get_bitlaunch_apis_needing_update()
+            logger.info(f"[Scheduler] Found {len(apis)} BitLaunch APIs needing update")
+            
+            updated_count = 0
             for api in apis:
                 try:
-                    from core.api_clients.bitlaunch import BitLaunchClient
+                    logger.info(f"[Scheduler] Updating BitLaunch API {api.id} ({api.email})")
                     client = BitLaunchClient(api.api_key)
                     account_info = client.get_account_info()
-                    manager.update_bitlaunch_api_info(api.id, account_info)
+                    
+                    # BitLaunch API trả về balance và limit theo đơn vị milli-dollars (1/1000)
+                    balance = account_info.get('balance', 0) / 1000
+                    limit = account_info.get('limit', 0) / 1000
+                    
+                    manager.update_bitlaunch_info(api.id, balance, limit)
+                    logger.info(f"[Scheduler] Updated BitLaunch API {api.id}: balance=${balance:.3f}, limit=${limit:.3f}")
+                    updated_count += 1
+                except BitLaunchAPIError as e:
+                    logger.error(f"[Scheduler] BitLaunch API error for API {api.id}: {e}")
                 except Exception as e:
                     logger.error(f"[Scheduler] Error updating BitLaunch API {api.id}: {e}")
+            
+            logger.info(f"[Scheduler] Successfully updated {updated_count}/{len(apis)} BitLaunch APIs")
     
     def update_bitlaunch_vps():
         """Tự động cập nhật danh sách VPS BitLaunch"""
@@ -537,16 +553,6 @@ def start_scheduler():
             except Exception as e:
                 logger.error(f"[Scheduler] Error in daily Rocket Chat notifications: {e}")
 
-    # Lên lịch đồng bộ proxy từ ZingProxy hàng ngày lúc 2:00 sáng
-    scheduler.add_job(
-        auto_sync_zingproxy_proxies,
-        'cron',
-        hour=2,
-        minute=0,
-        id='auto_sync_zingproxy_proxies',
-        replace_existing=True
-    )
-    
     # Lên lịch gửi cảnh báo hết hạn mỗi 5 phút để kiểm tra notify_hour của từng user
     scheduler.add_job(send_expiry_warnings, 'interval', minutes=5, id='expiry_warnings')
     
@@ -563,27 +569,40 @@ def start_scheduler():
     # Lên lịch gửi thông báo hàng ngày đến Rocket Chat mỗi ngày lúc 9h sáng
     scheduler.add_job(send_daily_rocket_chat_notifications, 'cron', hour=9, minute=0, id='rocketchat_daily_notifications')
     
-    # Lên lịch cập nhật BitLaunch mỗi ngày lúc 6h sáng
+    # ========================================================================
+    # BITLAUNCH API UPDATES
+    # ========================================================================
+    # Cập nhật hàng ngày lúc 6h sáng
     scheduler.add_job(update_bitlaunch_apis, 'cron', hour=6, minute=0, id='bitlaunch_update')
     scheduler.add_job(update_bitlaunch_vps, 'cron', hour=6, minute=30, id='bitlaunch_vps_update')
     
-    # Lên lịch cập nhật ZingProxy mỗi ngày lúc 7h sáng
+    # Cập nhật mỗi 6 giờ để đảm bảo dữ liệu luôn mới (NEW!)
+    scheduler.add_job(update_bitlaunch_apis, 'interval', hours=6, id='bitlaunch_update_interval')
+    scheduler.add_job(update_bitlaunch_vps, 'interval', hours=6, id='bitlaunch_vps_update_interval')
+    
+    # ========================================================================
+    # ZINGPROXY API UPDATES
+    # ========================================================================
+    # Cập nhật balance hàng ngày lúc 7h sáng
     scheduler.add_job(update_zingproxy_accounts, 'cron', hour=7, minute=0, id='zingproxy_update')
     
-    # Lên lịch cập nhật ZingProxy mỗi 6 giờ để đảm bảo dữ liệu luôn mới
+    # Cập nhật balance mỗi 6 giờ để đảm bảo dữ liệu luôn mới
     scheduler.add_job(update_zingproxy_accounts, 'interval', hours=6, id='zingproxy_update_interval')
     
-    # Lên lịch đồng bộ proxy từ ZingProxy mỗi 2 giờ
+    # Đồng bộ proxy mỗi 2 giờ (thường xuyên hơn vì proxy thay đổi nhiều)
     scheduler.add_job(auto_sync_zingproxy_proxies, 'interval', hours=2, id='zingproxy_proxy_sync')
     
-    # Lên lịch đồng bộ proxy từ ZingProxy mỗi ngày lúc 8h sáng
-    scheduler.add_job(auto_sync_zingproxy_proxies, 'cron', hour=8, minute=0, id='zingproxy_proxy_sync_daily')
+    # Đồng bộ proxy tổng quát vào 2h sáng (khi ít traffic)
+    scheduler.add_job(auto_sync_zingproxy_proxies, 'cron', hour=2, minute=0, id='zingproxy_proxy_sync_nightly')
     
-    # Lên lịch cập nhật CloudFly mỗi ngày lúc 8h sáng
+    # ========================================================================
+    # CLOUDFLY API UPDATES
+    # ========================================================================
+    # Cập nhật hàng ngày lúc 8h sáng
     scheduler.add_job(update_cloudfly_apis, 'cron', hour=8, minute=0, id='cloudfly_update')
     scheduler.add_job(update_cloudfly_vps, 'cron', hour=8, minute=30, id='cloudfly_vps_update')
     
-    # Lên lịch cập nhật CloudFly mỗi 6 giờ để đảm bảo dữ liệu luôn mới
+    # Cập nhật mỗi 6 giờ để đảm bảo dữ liệu luôn mới
     scheduler.add_job(update_cloudfly_apis, 'interval', hours=6, id='cloudfly_update_interval')
     scheduler.add_job(update_cloudfly_vps, 'interval', hours=6, id='cloudfly_vps_update_interval')
     
