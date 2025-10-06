@@ -163,10 +163,19 @@ function renderAccTable() {
       sourceBadge = '<span class="badge bg-secondary">Manual</span>';
     }
     
-    // Hiển thị số dư với format
+    // Hiển thị số dư với format (phân biệt đơn vị theo nguồn)
     let balanceDisplay = '';
     if (acc.balance !== undefined && acc.balance !== null) {
-      balanceDisplay = `$${acc.balance.toLocaleString()}`;
+      if (acc.source === 'zingproxy' || acc.source === 'cloudfly') {
+        // ZingProxy và CloudFly sử dụng VND
+        balanceDisplay = `${acc.balance.toLocaleString('vi-VN')} VND`;
+      } else if (acc.source === 'bitlaunch') {
+        // BitLaunch sử dụng USD
+        balanceDisplay = `$${acc.balance.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 3})}`;
+      } else {
+        // Manual accounts không có balance
+        balanceDisplay = 'N/A';
+      }
     } else {
       balanceDisplay = 'N/A';
     }

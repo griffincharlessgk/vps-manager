@@ -168,7 +168,7 @@ function loadApis() {
         html += `
           <tr>
             <td>${api.email || 'N/A'}</td>
-            <td>$${api.balance || 0}</td>
+            <td>${(api.balance || 0).toLocaleString('vi-VN')} VND</td>
             <td>${lastUpdated}</td>
             <td>${api.update_frequency || 1} ngày</td>
             <td>${statusBadge}</td>

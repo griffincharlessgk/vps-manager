@@ -294,121 +294,122 @@ def start_scheduler():
 
     def send_daily_rocket_chat_notifications():
         """Gửi thông báo hàng ngày đến Rocket Chat cho tất cả users có cấu hình"""
-        try:
-            from core.models import RocketChatConfig, User
-            from core.rocket_chat import send_daily_account_summary, send_account_expiry_notification, send_detailed_account_info
-            from core import manager
-            
-            logger.info("[Scheduler] Starting daily Rocket Chat notifications")
-            
-            # Lấy tất cả cấu hình Rocket Chat
-            configs = RocketChatConfig.query.filter_by(is_active=True).all()
-            
-            if not configs:
-                logger.info("[Scheduler] No Rocket Chat configurations found")
-                return
-            
-            logger.info(f"[Scheduler] Found {len(configs)} Rocket Chat configurations")
-            
-            for config in configs:
-                try:
-                    user = User.query.get(config.user_id)
-                    if not user:
-                        logger.warning(f"[Scheduler] User {config.user_id} not found for config {config.id}")
-                        continue
+        with app.app_context():
+            try:
+                from core.models import RocketChatConfig, User
+                from core.rocket_chat import send_daily_account_summary, send_account_expiry_notification, send_detailed_account_info
+                from core import manager
+                
+                logger.info("[Scheduler] Starting daily Rocket Chat notifications")
+                
+                # Lấy tất cả cấu hình Rocket Chat
+                configs = RocketChatConfig.query.filter_by(is_active=True).all()
+                
+                if not configs:
+                    logger.info("[Scheduler] No Rocket Chat configurations found")
+                    return
+                
+                logger.info(f"[Scheduler] Found {len(configs)} Rocket Chat configurations")
+                
+                for config in configs:
+                    try:
+                        user = User.query.get(config.user_id)
+                        if not user:
+                            logger.warning(f"[Scheduler] User {config.user_id} not found for config {config.id}")
+                            continue
                     
-                    logger.info(f"[Scheduler] Processing notifications for user {user.username}")
+                        logger.info(f"[Scheduler] Processing notifications for user {user.username}")
                     
-                    # Lấy danh sách tài khoản từ TẤT CẢ nguồn (giống như API endpoints)
-                    # 1. Tài khoản thủ công
-                    manual_acc_list = manager.list_accounts()
-                    for acc in manual_acc_list:
-                        if 'service' not in acc:
-                            acc['service'] = ''
-                        acc['source'] = 'manual'  # Đánh dấu nguồn
+                        # Lấy danh sách tài khoản từ TẤT CẢ nguồn (giống như API endpoints)
+                        # 1. Tài khoản thủ công
+                        manual_acc_list = manager.list_accounts()
+                        for acc in manual_acc_list:
+                            if 'service' not in acc:
+                                acc['service'] = ''
+                            acc['source'] = 'manual'  # Đánh dấu nguồn
                     
-                    # 2. Tài khoản từ BitLaunch
-                    bitlaunch_apis = manager.list_bitlaunch_apis(config.user_id)
-                    bitlaunch_acc_list = []
-                    for api in bitlaunch_apis:
-                        acc = {
-                            'id': f"bitlaunch_{api['id']}",
-                            'username': api['email'],
-                            'service': 'BitLaunch',
-                            'expiry': None,  # BitLaunch không có expiry
-                            'balance': api.get('balance', 0),
-                            'source': 'bitlaunch'
-                        }
-                        bitlaunch_acc_list.append(acc)
+                        # 2. Tài khoản từ BitLaunch
+                        bitlaunch_apis = manager.list_bitlaunch_apis(config.user_id)
+                        bitlaunch_acc_list = []
+                        for api in bitlaunch_apis:
+                            acc = {
+                                'id': f"bitlaunch_{api['id']}",
+                                'username': api['email'],
+                                'service': 'BitLaunch',
+                                'expiry': None,  # BitLaunch không có expiry
+                                'balance': api.get('balance', 0),
+                                'source': 'bitlaunch'
+                            }
+                            bitlaunch_acc_list.append(acc)
                     
-                    # 3. Tài khoản từ ZingProxy
-                    zingproxy_acc_list = manager.list_zingproxy_accounts(config.user_id)
-                    for acc in zingproxy_acc_list:
-                        acc['source'] = 'zingproxy'  # Đánh dấu nguồn
-                        # Map fields để phù hợp với UI
-                        acc['username'] = acc.get('email', 'N/A')
-                        acc['service'] = 'ZingProxy'
-                        acc['expiry'] = None  # ZingProxy không có expiry
-                        acc['balance'] = acc.get('balance', 0)  # Thêm balance
+                        # 3. Tài khoản từ ZingProxy
+                        zingproxy_acc_list = manager.list_zingproxy_accounts(config.user_id)
+                        for acc in zingproxy_acc_list:
+                            acc['source'] = 'zingproxy'  # Đánh dấu nguồn
+                            # Map fields để phù hợp với UI
+                            acc['username'] = acc.get('email', 'N/A')
+                            acc['service'] = 'ZingProxy'
+                            acc['expiry'] = None  # ZingProxy không có expiry
+                            acc['balance'] = acc.get('balance', 0)  # Thêm balance
                     
-                    # 4. Tài khoản từ CloudFly
-                    cloudfly_apis = manager.list_cloudfly_apis(config.user_id)
-                    cloudfly_acc_list = []
-                    for api in cloudfly_apis:
-                        acc = {
-                            'id': f"cloudfly_{api['id']}",
-                            'username': api['email'],
-                            'service': 'CloudFly',
-                            'expiry': None,  # CloudFly không có expiry
-                            'balance': api.get('balance', 0),
-                            'source': 'cloudfly'
-                        }
-                        cloudfly_acc_list.append(acc)
+                        # 4. Tài khoản từ CloudFly
+                        cloudfly_apis = manager.list_cloudfly_apis(config.user_id)
+                        cloudfly_acc_list = []
+                        for api in cloudfly_apis:
+                            acc = {
+                                'id': f"cloudfly_{api['id']}",
+                                'username': api['email'],
+                                'service': 'CloudFly',
+                                'expiry': None,  # CloudFly không có expiry
+                                'balance': api.get('balance', 0),
+                                'source': 'cloudfly'
+                            }
+                            cloudfly_acc_list.append(acc)
                     
-                    # Kết hợp tất cả tài khoản
-                    all_accounts = manual_acc_list + bitlaunch_acc_list + zingproxy_acc_list + cloudfly_acc_list
-                    
-                    logger.info(f"[Scheduler] Found {len(all_accounts)} total accounts for user {user.username}:")
-                    logger.info(f"[Scheduler]   - Manual: {len(manual_acc_list)}")
-                    logger.info(f"[Scheduler]   - BitLaunch: {len(bitlaunch_acc_list)}")
-                    logger.info(f"[Scheduler]   - ZingProxy: {len(zingproxy_acc_list)}")
-                    logger.info(f"[Scheduler]   - CloudFly: {len(cloudfly_acc_list)}")
-                    
-                    # Gửi báo cáo tổng hợp hàng ngày
-                    daily_success = send_daily_account_summary(
-                        room_id=config.room_id,
-                        auth_token=config.auth_token,  # Sử dụng trực tiếp
-                        user_id=config.user_id_rocket,
-                        accounts=all_accounts  # Sử dụng danh sách đầy đủ
-                    )
-                    
-                    if daily_success:
-                        logger.info(f"[Scheduler] Daily summary sent successfully for user {user.username}")
-                    else:
-                        logger.error(f"[Scheduler] Failed to send daily summary for user {user.username}")
-                    
-                    # Gửi thông báo tài khoản sắp hết hạn
-                    expiry_success = send_account_expiry_notification(
-                        room_id=config.room_id,
-                        auth_token=config.auth_token,  # Sử dụng trực tiếp
-                        user_id=config.user_id_rocket,
-                        accounts=all_accounts,  # Sử dụng danh sách đầy đủ
-                        warning_days=user.notify_days or 7
-                    )
-                    
-                    if expiry_success:
-                        logger.info(f"[Scheduler] Expiry notification sent successfully for user {user.username}")
-                    else:
-                        logger.error(f"[Scheduler] Failed to send expiry notification for user {user.username}")
+                        # Kết hợp tất cả tài khoản
+                        all_accounts = manual_acc_list + bitlaunch_acc_list + zingproxy_acc_list + cloudfly_acc_list
                         
-                except Exception as e:
-                    logger.error(f"[Scheduler] Error processing notifications for config {config.id}: {e}")
-                    continue
+                        logger.info(f"[Scheduler] Found {len(all_accounts)} total accounts for user {user.username}:")
+                        logger.info(f"[Scheduler]   - Manual: {len(manual_acc_list)}")
+                        logger.info(f"[Scheduler]   - BitLaunch: {len(bitlaunch_acc_list)}")
+                        logger.info(f"[Scheduler]   - ZingProxy: {len(zingproxy_acc_list)}")
+                        logger.info(f"[Scheduler]   - CloudFly: {len(cloudfly_acc_list)}")
+                    
+                        # Gửi báo cáo tổng hợp hàng ngày
+                        daily_success = send_daily_account_summary(
+                            room_id=config.room_id,
+                            auth_token=config.auth_token,  # Sử dụng trực tiếp
+                            user_id=config.user_id_rocket,
+                            accounts=all_accounts  # Sử dụng danh sách đầy đủ
+                        )
+                        
+                        if daily_success:
+                            logger.info(f"[Scheduler] Daily summary sent successfully for user {user.username}")
+                        else:
+                            logger.error(f"[Scheduler] Failed to send daily summary for user {user.username}")
+                    
+                        # Gửi thông báo tài khoản sắp hết hạn
+                        expiry_success = send_account_expiry_notification(
+                            room_id=config.room_id,
+                            auth_token=config.auth_token,  # Sử dụng trực tiếp
+                            user_id=config.user_id_rocket,
+                            accounts=all_accounts,  # Sử dụng danh sách đầy đủ
+                            warning_days=user.notify_days or 7
+                        )
+                        
+                        if expiry_success:
+                            logger.info(f"[Scheduler] Expiry notification sent successfully for user {user.username}")
+                        else:
+                            logger.error(f"[Scheduler] Failed to send expiry notification for user {user.username}")
+                            
+                    except Exception as e:
+                        logger.error(f"[Scheduler] Error processing notifications for config {config.id}: {e}")
+                        continue
             
-            logger.info("[Scheduler] Daily Rocket Chat notifications completed")
-            
-        except Exception as e:
-            logger.error(f"[Scheduler] Error in daily Rocket Chat notifications: {e}")
+                logger.info("[Scheduler] Daily Rocket Chat notifications completed")
+                
+            except Exception as e:
+                logger.error(f"[Scheduler] Error in daily Rocket Chat notifications: {e}")
 
     # Lên lịch đồng bộ proxy từ ZingProxy hàng ngày lúc 2:00 sáng
     scheduler.add_job(

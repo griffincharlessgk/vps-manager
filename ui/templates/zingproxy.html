@@ -153,7 +153,7 @@ async function loadAccounts() {
         html += `
           <tr>
             <td><strong>${acc.email}</strong></td>
-            <td><span class="badge bg-success fs-6">$${acc.balance || 0}</span></td>
+            <td><span class="badge bg-success fs-6">${(acc.balance || 0).toLocaleString('vi-VN')} VND</span></td>
             <td>${createdDate}</td>
             <td>${lastUpdated}</td>
             <td><span class="badge bg-info">${acc.update_frequency} ngày</span></td>

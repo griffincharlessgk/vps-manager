@@ -196,32 +196,32 @@ def send_account_expiry_notification(
             logger.info(f"[RocketChat] Checking balance for {account.get('username', 'Unknown')} - Source: {source} - Balance: ${balance}")
             
             if source == 'bitlaunch':
-                if balance < 5000:  # Cảnh báo khi balance < 5000
+                if balance < 5:  # Cảnh báo khi balance < $5
                     low_balance_accounts.append({
                         'account': account,
                         'balance': balance,
                         'type': 'low_balance',
-                        'threshold': 5000
+                        'threshold': 5
                     })
-                    logger.info(f"[RocketChat] Added BitLaunch to low balance list: {account.get('username')} (${balance} < $10)")
+                    logger.info(f"[RocketChat] Added BitLaunch to low balance list: {account.get('username')} (${balance:.3f} < $5)")
             elif source == 'zingproxy':
-                if balance < 100000:  # Cảnh báo khi balance < 100000
+                if balance < 100000:  # Cảnh báo khi balance < 100,000 VND
                     low_balance_accounts.append({
                         'account': account,
                         'balance': balance,
                         'type': 'low_balance',
                         'threshold': 100000
                     })
-                    logger.info(f"[RocketChat] Added ZingProxy to low balance list: {account.get('username')} (${balance} < $5)")
+                    logger.info(f"[RocketChat] Added ZingProxy to low balance list: {account.get('username')} ({balance:,.0f} VND < 100,000 VND)")
             elif source == 'cloudfly':
-                if balance < 50000:  # Cảnh báo khi balance < 50000
+                if balance < 100000:  # Cảnh báo khi balance < 100,000 VND
                     low_balance_accounts.append({
                         'account': account,
                         'balance': balance,
                         'type': 'low_balance',
-                        'threshold': 50000
+                        'threshold': 100000
                     })
-                    logger.info(f"[RocketChat] Added CloudFly to low balance list: {account.get('username')} (${balance} < $10)")
+                    logger.info(f"[RocketChat] Added CloudFly to low balance list: {account.get('username')} ({balance:,.0f} VND < 100,000 VND)")
         
         logger.info(f"[RocketChat] Found {len(low_balance_accounts)} low balance accounts")
         
@@ -293,8 +293,13 @@ def send_account_expiry_notification(
                 
                 text += f"{status_emoji} **{account.get('username', account.get('id', 'Unknown'))}**\n"
                 text += f"   • Dịch vụ: {account.get('service', 'N/A')}\n"
-                text += f"   • Balance hiện tại: ${balance:.2f}\n"
-                text += f"   • Ngưỡng cảnh báo: ${threshold}\n"
+                # Format balance dựa trên nguồn
+                if account.get('source') in ['zingproxy', 'cloudfly']:
+                    text += f"   • Balance hiện tại: {balance:,.0f} VND\n"
+                    text += f"   • Ngưỡng cảnh báo: {threshold:,.0f} VND\n"
+                else:
+                    text += f"   • Balance hiện tại: ${balance:.2f}\n"
+                    text += f"   • Ngưỡng cảnh báo: ${threshold}\n"
                 text += f"   • Trạng thái: {status_text}\n\n"
         
         logger.info(f"[RocketChat] Notification content prepared:")
@@ -361,11 +366,10 @@ def send_detailed_account_info(
         zingproxy_accounts = [acc for acc in accounts if acc.get('source') == 'zingproxy']
         cloudfly_accounts = [acc for acc in accounts if acc.get('source') == 'cloudfly']
         
-        # Tính tổng balance
-        total_balance = 0
-        for account in accounts:
-            if account.get('source') in ['bitlaunch', 'zingproxy', 'cloudfly']:
-                total_balance += account.get('balance', 0)
+        # Tính balance theo từng nguồn
+        bitlaunch_balance = sum([acc.get('balance', 0) for acc in bitlaunch_accounts])
+        zingproxy_balance = sum([acc.get('balance', 0) for acc in zingproxy_accounts])
+        cloudfly_balance = sum([acc.get('balance', 0) for acc in cloudfly_accounts])
         
         # Tạo tiêu đề
         title = f"📊 Thông tin chi tiết tài khoản - {datetime.now().strftime('%d/%m/%Y %H:%M')}"
@@ -378,12 +382,16 @@ def send_detailed_account_info(
         text += f"   • 🌐 ZingProxy: {len(zingproxy_accounts)}\n"
         text += f"   • ☁️ CloudFly: {len(cloudfly_accounts)}\n\n"
         
-        # Thông tin balance tổng hợp
-        if total_balance > 0:
-            text += f"💰 **Tổng balance:** ${total_balance:,.2f}\n"
-            text += f"   • BitLaunch: ${sum([acc.get('balance', 0) for acc in bitlaunch_accounts]):,.2f}\n"
-            text += f"   • ZingProxy: ${sum([acc.get('balance', 0) for acc in zingproxy_accounts]):,.2f}\n"
-            text += f"   • CloudFly: ${sum([acc.get('balance', 0) for acc in cloudfly_accounts]):,.2f}\n\n"
+        # Thông tin balance tổng hợp (phân biệt đơn vị)
+        if bitlaunch_balance > 0 or zingproxy_balance > 0 or cloudfly_balance > 0:
+            text += f"💰 **Balance tổng hợp:**\n"
+            if bitlaunch_balance > 0:
+                text += f"   • BitLaunch: ${bitlaunch_balance:,.2f} USD\n"
+            if zingproxy_balance > 0:
+                text += f"   • ZingProxy: {zingproxy_balance:,.0f} VND\n"
+            if cloudfly_balance > 0:
+                text += f"   • CloudFly: ${cloudfly_balance:,.2f} USD\n"
+            text += "\n"
         
         # Chi tiết tài khoản thủ công
         if manual_accounts:
@@ -414,7 +422,7 @@ def send_detailed_account_info(
             text += f"🚀 **Tài khoản BitLaunch ({len(bitlaunch_accounts)}):**\n"
             for acc in bitlaunch_accounts:
                 balance = acc.get('balance', 0)
-                balance_status = "🚨 Balance thấp" if balance < 5000 else "✅ Balance ổn"
+                balance_status = "🚨 Balance thấp" if balance < 5 else "✅ Balance ổn"
                 text += f"   • **{acc.get('username', acc.get('id', 'Unknown'))}**\n"
                 text += f"     - Email: {acc.get('username', 'N/A')}\n"
                 text += f"     - Balance: ${balance:,.2f}\n"
@@ -428,7 +436,7 @@ def send_detailed_account_info(
                 balance_status = "🚨 Balance thấp" if balance < 100000 else "✅ Balance ổn"
                 text += f"   • **{acc.get('username', acc.get('id', 'Unknown'))}**\n"
                 text += f"     - Email: {acc.get('username', 'N/A')}\n"
-                text += f"     - Balance: ${balance:,.2f}\n"
+                text += f"     - Balance: {balance:,.0f} VND\n"
                 text += f"     - Trạng thái: {balance_status}\n\n"
         
         # Chi tiết tài khoản CloudFly
@@ -436,10 +444,10 @@ def send_detailed_account_info(
             text += f"☁️ **Tài khoản CloudFly ({len(cloudfly_accounts)}):**\n"
             for acc in cloudfly_accounts:
                 balance = acc.get('balance', 0)
-                balance_status = "🚨 Balance thấp" if balance < 50000 else "✅ Balance ổn"
+                balance_status = "🚨 Balance thấp" if balance < 100000 else "✅ Balance ổn"
                 text += f"   • **{acc.get('username', acc.get('id', 'Unknown'))}**\n"
                 text += f"     - Email: {acc.get('username', 'N/A')}\n"
-                text += f"     - Balance: ${balance:,.2f}\n"
+                text += f"     - Balance: {balance:,.0f} VND\n"
                 text += f"     - Trạng thái: {balance_status}\n\n"
         
         # Thống kê cảnh báo
@@ -462,13 +470,13 @@ def send_detailed_account_info(
         
         # Đếm tài khoản balance thấp
         for acc in accounts:
-            if acc.get('source') == 'bitlaunch' and acc.get('balance', 0) < 5000:
+            if acc.get('source') == 'bitlaunch' and acc.get('balance', 0) < 5:
                 low_balance_count += 1
                 warnings_count += 1
             elif acc.get('source') == 'zingproxy' and acc.get('balance', 0) < 100000:
                 low_balance_count += 1
                 warnings_count += 1
-            elif acc.get('source') == 'cloudfly' and acc.get('balance', 0) < 50000:
+            elif acc.get('source') == 'cloudfly' and acc.get('balance', 0) < 100000:
                 low_balance_count += 1
                 warnings_count += 1
         
@@ -564,11 +572,11 @@ def send_daily_account_summary(
                 
                 # Kiểm tra balance thấp
                 if account.get('source') == 'zingproxy':
-                    threshold = 100000
+                    threshold = 100000  # 100,000 VND
                 elif account.get('source') == 'bitlaunch':
-                    threshold = 5000
+                    threshold = 5  # $5 USD
                 elif account.get('source') == 'cloudfly':
-                    threshold = 50000
+                    threshold = 100000  # 100,000 VND
                 else:
                     threshold = 0
                 if balance < threshold:
@@ -590,10 +598,18 @@ def send_daily_account_summary(
         
         # Thông tin balance tổng hợp
         if bitlaunch_accounts > 0 or zingproxy_accounts > 0 or cloudfly_accounts > 0:
-            text += f"💰 **Tổng balance:** ${total_balance:.2f}\n"
-            text += f"   • BitLaunch: ${sum([acc.get('balance', 0) for acc in accounts if acc.get('source') == 'bitlaunch']):.2f}\n"
-            text += f"   • ZingProxy: ${sum([acc.get('balance', 0) for acc in accounts if acc.get('source') == 'zingproxy']):.2f}\n"
-            text += f"   • CloudFly: ${sum([acc.get('balance', 0) for acc in accounts if acc.get('source') == 'cloudfly']):.2f}\n\n"
+            bitlaunch_balance = sum([acc.get('balance', 0) for acc in accounts if acc.get('source') == 'bitlaunch'])
+            zingproxy_balance = sum([acc.get('balance', 0) for acc in accounts if acc.get('source') == 'zingproxy'])
+            cloudfly_balance = sum([acc.get('balance', 0) for acc in accounts if acc.get('source') == 'cloudfly'])
+            
+            text += f"💰 **Balance tổng hợp:**\n"
+            if bitlaunch_balance > 0:
+                text += f"   • BitLaunch: ${bitlaunch_balance:.2f} USD\n"
+            if zingproxy_balance > 0:
+                text += f"   • ZingProxy: {zingproxy_balance:,.0f} VND\n"
+            if cloudfly_balance > 0:
+                text += f"   • CloudFly: {cloudfly_balance:,.0f} VND\n"
+            text += "\n"
         
         # Cảnh báo tài khoản sắp hết hạn
         if expiring_soon:
@@ -632,7 +648,14 @@ def send_daily_account_summary(
                 account = item['account']
                 balance = item['balance']
                 threshold = item['threshold']
-                text += f"   • {account.get('username', account.get('id'))} - {account.get('service')} (${balance:.2f} < ${threshold})\n"
+                # Format balance dựa trên nguồn
+                if account.get('source') in ['zingproxy', 'cloudfly']:
+                    balance_str = f"{balance:,.0f} VND"
+                    threshold_str = f"{threshold:,.0f} VND"
+                else:
+                    balance_str = f"${balance:.2f}"
+                    threshold_str = f"${threshold}"
+                text += f"   • {account.get('username', account.get('id'))} - {account.get('service')} ({balance_str} < {threshold_str})\n"
             if len(low_balance_accounts) > 5:
                 text += f"   • ... và {len(low_balance_accounts) - 5} tài khoản khác\n"
         else:
