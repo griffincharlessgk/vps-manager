@@ -107,15 +107,39 @@ def start_scheduler():
         """Tự động cập nhật danh sách VPS BitLaunch"""
         logger.info("[Scheduler] Running update_bitlaunch_vps job")
         with app.app_context():
-            apis = manager.list_bitlaunch_apis()
+            from core.api_clients.bitlaunch import BitLaunchClient, BitLaunchAPIError
+            from core.models import BitLaunchAPI
+            
+            # Lấy tất cả BitLaunch APIs từ tất cả users
+            apis = BitLaunchAPI.query.filter_by(is_active=True).all()
+            logger.info(f"[Scheduler] Found {len(apis)} BitLaunch APIs for VPS update")
+            
+            total_updated = 0
+            failed_apis = 0
+            
             for api in apis:
                 try:
-                    from core.api_clients.bitlaunch import BitLaunchClient
+                    logger.info(f"[Scheduler] Updating VPS for BitLaunch API {api.id} ({api.email})")
                     client = BitLaunchClient(api.api_key)
                     servers = client.get_servers()
-                    manager.update_bitlaunch_vps_list(api.id, servers)
+                    
+                    if servers:
+                        manager.update_bitlaunch_vps_list(api.id, servers)
+                        total_updated += len(servers)
+                        logger.info(f"[Scheduler] Updated {len(servers)} VPS instances for API {api.id}")
+                    else:
+                        logger.info(f"[Scheduler] No VPS instances found for API {api.id}")
+                        
+                except BitLaunchAPIError as e:
+                    logger.error(f"[Scheduler] BitLaunch API error for API {api.id}: {e}")
+                    failed_apis += 1
+                    continue
                 except Exception as e:
                     logger.error(f"[Scheduler] Error updating BitLaunch VPS for API {api.id}: {e}")
+                    failed_apis += 1
+                    continue
+            
+            logger.info(f"[Scheduler] BitLaunch VPS update completed: {total_updated} instances updated, {failed_apis} APIs failed")
     
     def update_zingproxy_accounts():
         """Tự động cập nhật thông tin tài khoản và proxy ZingProxy theo tần suất"""
