@@ -121,7 +121,7 @@ def start_scheduler():
                 try:
                     logger.info(f"[Scheduler] Updating VPS for BitLaunch API {api.id} ({api.email})")
                     client = BitLaunchClient(api.api_key)
-                    servers = client.get_servers()
+                    servers = client.list_servers()
                     
                     if servers:
                         manager.update_bitlaunch_vps_list(api.id, servers)
