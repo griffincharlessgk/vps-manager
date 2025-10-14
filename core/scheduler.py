@@ -2,6 +2,8 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from core import manager, notifier
 from core.models import User
 from datetime import datetime
+from datetime import timedelta
+from core.rocket_chat import send_formatted_notification_simple
 import os
 import logging
 
@@ -12,6 +14,41 @@ def start_scheduler():
     app = create_app()
     
     scheduler = BackgroundScheduler()
+
+    def _send_api_error_alert(user_id: int, provider: str, email: str, error_message: str) -> None:
+        """Gửi cảnh báo Rocket Chat khi API key/token lỗi hoặc hết hạn."""
+        try:
+            from core.models import RocketChatConfig
+            configs = RocketChatConfig.query.filter_by(user_id=user_id, is_active=True).all()
+            if not configs:
+                logger.warning(f"[Scheduler] No Rocket Chat config for user {user_id} to report API error")
+                return
+
+            title = f"❗ Lỗi API key - {provider}"
+            text = (
+                f"Tài khoản: {email}\n"
+                f"Dịch vụ: {provider}\n"
+                f"Thời gian: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
+                f"Chi tiết lỗi: {error_message}\n\n"
+                f"Khuyến nghị:\n"
+                f"- Kiểm tra lại API key/token.\n"
+                f"- Gia hạn hoặc nhập lại API key nếu hết hạn.\n"
+            )
+
+            for cfg in configs:
+                try:
+                    send_formatted_notification_simple(
+                        room_id=cfg.room_id,
+                        title=title,
+                        text=text,
+                        auth_token=cfg.auth_token,
+                        user_id=cfg.user_id_rocket,
+                        color="danger"
+                    )
+                except Exception as e:
+                    logger.error(f"[Scheduler] Failed to send API error alert to Rocket Chat: {e}")
+        except Exception as e:
+            logger.error(f"[Scheduler] Unexpected error while preparing API error alert: {e}")
     
     def send_expiry_warnings():
         """Gửi cảnh báo hết hạn qua RocketChat cho users có cấu hình"""
@@ -98,8 +135,10 @@ def start_scheduler():
                     updated_count += 1
                 except BitLaunchAPIError as e:
                     logger.error(f"[Scheduler] BitLaunch API error for API {api.id}: {e}")
+                    _send_api_error_alert(api.user_id, "BitLaunch", api.email, str(e))
                 except Exception as e:
                     logger.error(f"[Scheduler] Error updating BitLaunch API {api.id}: {e}")
+                    _send_api_error_alert(api.user_id, "BitLaunch", api.email, str(e))
             
             logger.info(f"[Scheduler] Successfully updated {updated_count}/{len(apis)} BitLaunch APIs")
     
@@ -132,10 +171,12 @@ def start_scheduler():
                         
                 except BitLaunchAPIError as e:
                     logger.error(f"[Scheduler] BitLaunch API error for API {api.id}: {e}")
+                    _send_api_error_alert(api.user_id, "BitLaunch", api.email, str(e))
                     failed_apis += 1
                     continue
                 except Exception as e:
                     logger.error(f"[Scheduler] Error updating BitLaunch VPS for API {api.id}: {e}")
+                    _send_api_error_alert(api.user_id, "BitLaunch", api.email, str(e))
                     failed_apis += 1
                     continue
             
@@ -197,9 +238,11 @@ def start_scheduler():
                     updated_count += 1
                 except ZingProxyAPIError as e:
                     logger.error(f"[Scheduler] ZingProxy API error for account {acc.id}: {e}")
+                    _send_api_error_alert(acc.user_id, "ZingProxy", acc.email, str(e))
                     continue
                 except Exception as e:
                     logger.error(f"[Scheduler] Error updating ZingProxy account {acc.id}: {e}")
+                    _send_api_error_alert(acc.user_id, "ZingProxy", acc.email, str(e))
                     continue
             
             logger.info(f"[Scheduler] Successfully updated {updated_count}/{len(accs)} ZingProxy accounts")
@@ -287,9 +330,11 @@ def start_scheduler():
                     updated_count += 1
                 except CloudFlyAPIError as e:
                     logger.error(f"[Scheduler] CloudFly API error for API {api.id}: {e}")
+                    _send_api_error_alert(api.user_id, "CloudFly", api.email, str(e))
                     continue
                 except Exception as e:
                     logger.error(f"[Scheduler] Error updating CloudFly API {api.id}: {e}")
+                    _send_api_error_alert(api.user_id, "CloudFly", api.email, str(e))
                     continue
             
             logger.info(f"[Scheduler] Successfully updated {updated_count}/{len(apis)} CloudFly APIs")
@@ -323,12 +368,51 @@ def start_scheduler():
                         
                 except CloudFlyAPIError as e:
                     logger.error(f"[Scheduler] CloudFly API error for API {api.id}: {e}")
+                    _send_api_error_alert(api.user_id, "CloudFly", api.email, str(e))
                     failed_apis += 1
                     continue
                 except Exception as e:
                     logger.error(f"[Scheduler] Error updating CloudFly VPS for API {api.id}: {e}")
+                    _send_api_error_alert(api.user_id, "CloudFly", api.email, str(e))
                     failed_apis += 1
                     continue
+
+    def check_stale_api_updates():
+        """Cảnh báo nếu API không được cập nhật > 24h (có thể do hết hạn/nhập sai)."""
+        logger.info("[Scheduler] Running check_stale_api_updates job")
+        with app.app_context():
+            from core.models import BitLaunchAPI, ZingProxyAccount, CloudFlyAPI
+            threshold = datetime.utcnow() - timedelta(hours=24)
+
+            # BitLaunch
+            try:
+                bl_stale = BitLaunchAPI.query.filter(
+                    (BitLaunchAPI.last_updated == None) | (BitLaunchAPI.last_updated < threshold)
+                ).all()
+                for api in bl_stale:
+                    _send_api_error_alert(api.user_id, "BitLaunch", api.email, "Không nhận cập nhật > 24h. Có thể API key hết hạn/không hợp lệ.")
+            except Exception as e:
+                logger.error(f"[Scheduler] Error checking stale BitLaunch APIs: {e}")
+
+            # ZingProxy
+            try:
+                zp_stale = ZingProxyAccount.query.filter(
+                    (ZingProxyAccount.last_updated == None) | (ZingProxyAccount.last_updated < threshold)
+                ).all()
+                for acc in zp_stale:
+                    _send_api_error_alert(acc.user_id, "ZingProxy", acc.email, "Không nhận cập nhật > 24h. Có thể API token hết hạn/không hợp lệ.")
+            except Exception as e:
+                logger.error(f"[Scheduler] Error checking stale ZingProxy accounts: {e}")
+
+            # CloudFly
+            try:
+                cf_stale = CloudFlyAPI.query.filter(
+                    (CloudFlyAPI.last_updated == None) | (CloudFlyAPI.last_updated < threshold)
+                ).all()
+                for api in cf_stale:
+                    _send_api_error_alert(api.user_id, "CloudFly", api.email, "Không nhận cập nhật > 24h. Có thể API token hết hạn/không hợp lệ.")
+            except Exception as e:
+                logger.error(f"[Scheduler] Error checking stale CloudFly APIs: {e}")
             
             logger.info(f"[Scheduler] CloudFly VPS update completed: {total_updated} instances updated, {failed_apis} APIs failed")
 
@@ -581,7 +665,8 @@ def start_scheduler():
     scheduler.add_job(send_expiry_warnings, 'interval', minutes=5, id='expiry_warnings')
     
     # Lên lịch gửi báo cáo tổng hợp mỗi 5 phút để kiểm tra notify_hour của từng user
-    scheduler.add_job(send_daily_summary, 'interval', minutes=5, id='daily_summary')
+    # DISABLED: Gây duplicate notifications với account_alerts_12h
+    # scheduler.add_job(send_daily_summary, 'interval', minutes=5, id='daily_summary')
     
     # Lên lịch kiểm tra và gửi cảnh báo tài khoản mỗi 12 giờ
     # Job này sẽ gửi thông báo ngay lập tức, không cần chờ đến notify_hour
@@ -629,6 +714,9 @@ def start_scheduler():
     # Cập nhật mỗi 6 giờ để đảm bảo dữ liệu luôn mới
     scheduler.add_job(update_cloudfly_apis, 'interval', hours=6, id='cloudfly_update_interval')
     scheduler.add_job(update_cloudfly_vps, 'interval', hours=6, id='cloudfly_vps_update_interval')
+    
+    # Kiểm tra API không cập nhật quá 24h (mỗi 6 giờ)
+    scheduler.add_job(check_stale_api_updates, 'interval', hours=6, id='stale_api_updates_check')
     
     logger.info(f"[Scheduler] Starting scheduler with {len(scheduler.get_jobs())} jobs")
     scheduler.start()

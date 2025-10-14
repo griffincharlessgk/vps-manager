@@ -2550,4 +2550,5 @@ def init_app():
         return app
 
 if __name__ == '__main__':
-    app.run(debug=True) 
+    # Tránh khởi động scheduler tại đây để không bị chạy 2 lần khi debug reloader
+    app.run(debug=True)
