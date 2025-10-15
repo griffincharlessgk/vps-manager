@@ -6,6 +6,10 @@ from datetime import timedelta
 from core.rocket_chat import send_formatted_notification_simple
 import os
 import logging
+import urllib3
+
+# Suppress SSL warnings
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 logger = logging.getLogger(__name__)
 
@@ -414,7 +418,7 @@ def start_scheduler():
             except Exception as e:
                 logger.error(f"[Scheduler] Error checking stale CloudFly APIs: {e}")
             
-            logger.info(f"[Scheduler] CloudFly VPS update completed: {total_updated} instances updated, {failed_apis} APIs failed")
+            logger.info(f"[Scheduler] Stale API updates check completed")
 
     def check_account_alerts_5min():
         """Kiểm tra và gửi cảnh báo tài khoản sắp hết hạn và balance thấp"""
