@@ -9,7 +9,7 @@
   <style>
     body {
       min-height: 100vh;
-      background: url('/static/img/bg-login.jpg') no-repeat center center fixed;
+      background: url("{{ url_for('static', filename='img/bg-login.jpg') }}") no-repeat center center fixed;
       background-size: cover;
       display: flex;
       align-items: center;

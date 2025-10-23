@@ -11,7 +11,10 @@ def setup_logging(app):
     os.makedirs(log_dir, exist_ok=True)
     
     # Configure logging
-    log_level = os.getenv('LOG_LEVEL', 'INFO').upper()
+    raw_level = os.getenv('LOG_LEVEL', 'INFO')
+    log_level = (raw_level or 'INFO').strip().upper()
+    if not hasattr(logging, log_level):
+        log_level = 'INFO'
     
     # Create formatters
     detailed_formatter = logging.Formatter(

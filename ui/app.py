@@ -2506,9 +2506,20 @@ def create_app():
             logger.error(f"Error restarting scheduler: {e}")
             return {'status': 'error', 'error': str(e)}, 500
 
+    @app.route('/health')
+    def health():
+        return jsonify({'status': 'ok'}), 200
+
     return app
 
 app = create_app()
+
+# Bật scheduler tự động trong container nếu ENABLE_SCHEDULER=true (mặc định: true)
+try:
+    if os.getenv('ENABLE_SCHEDULER', 'true').strip().lower() == 'true':
+        init_app()
+except Exception as _e:
+    pass
 
 # Tạm thời comment để tránh lỗi database
 # with app.app_context():
