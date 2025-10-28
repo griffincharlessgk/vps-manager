@@ -825,17 +825,21 @@ def create_app():
             # Kết hợp tất cả tài khoản
             all_accounts = manual_acc_list + bitlaunch_acc_list + zingproxy_acc_list + cloudfly_acc_list
             
-            # Gửi thông báo tài khoản sắp hết hạn
+            # Lấy danh sách VPS
+            vps_list = manager.list_vps()
+            
+            # Gửi thông báo VPS/tài khoản sắp hết hạn
             success = send_account_expiry_notification(
                 room_id=config.room_id,
                 auth_token=config.auth_token,
                 user_id=config.user_id_rocket,
                 accounts=all_accounts,
-                warning_days=user.notify_days or 7
+                warning_days=user.notify_days or 7,
+                vps_list=vps_list
             )
             
             if success:
-                return {'status': 'success', 'message': 'Đã gửi thông báo tài khoản sắp hết hạn thành công'}
+                return {'status': 'success', 'message': 'Đã gửi thông báo VPS/tài khoản sắp hết hạn thành công'}
             else:
                 return {'status': 'error', 'error': 'Gửi thông báo sắp hết hạn thất bại'}
                 

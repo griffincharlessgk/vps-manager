@@ -520,14 +520,19 @@ def start_scheduler():
                                 logger.warning(f"[Scheduler] 💰 CloudFly low balance: {acc.get('username')} ({balance:,.0f} VND < 100,000 VND)")
                         
                         logger.info(f"[Scheduler] 🚨 Found {low_balance_count} accounts with low balance")
+                        
+                        # Lấy danh sách VPS
+                        vps_list = manager.list_vps()
+                        logger.info(f"[Scheduler] 🖥️  Found {len(vps_list)} total VPS")
                     
-                        # Gửi thông báo cảnh báo (bao gồm cả balance thấp và tài khoản sắp hết hạn)
+                        # Gửi thông báo cảnh báo (bao gồm VPS, tài khoản sắp hết hạn và balance thấp)
                         alert_success = send_account_expiry_notification(
                             room_id=config.room_id,
                             auth_token=config.auth_token,
                             user_id=config.user_id_rocket,
                             accounts=all_accounts,
-                            warning_days=user.notify_days or 7
+                            warning_days=user.notify_days or 7,
+                            vps_list=vps_list
                         )
                     
                         if alert_success:
@@ -642,13 +647,17 @@ def start_scheduler():
                         else:
                             logger.error(f"[Scheduler] Failed to send daily summary for user {user.username}")
                     
-                        # Gửi thông báo tài khoản sắp hết hạn
+                        # Lấy danh sách VPS
+                        vps_list = manager.list_vps()
+                        
+                        # Gửi thông báo VPS/tài khoản sắp hết hạn
                         expiry_success = send_account_expiry_notification(
                             room_id=config.room_id,
                             auth_token=config.auth_token,  # Sử dụng trực tiếp
                             user_id=config.user_id_rocket,
                             accounts=all_accounts,  # Sử dụng danh sách đầy đủ
-                            warning_days=user.notify_days or 7
+                            warning_days=user.notify_days or 7,
+                            vps_list=vps_list
                         )
                         
                         if expiry_success:

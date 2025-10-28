@@ -133,26 +133,63 @@ def send_account_expiry_notification(
     auth_token: str,
     user_id: str,
     accounts: List[Dict],
-    warning_days: int = 7
+    warning_days: int = 7,
+    vps_list: List[Dict] = None
 ) -> bool:
-    """Gửi thông báo tài khoản sắp hết hạn và balance thấp đến Rocket Chat"""
+    """Gửi thông báo VPS/tài khoản sắp hết hạn và balance thấp đến Rocket Chat"""
     try:
-        logger.info(f"[RocketChat] Starting account expiry notification")
+        logger.info(f"[RocketChat] Starting account/VPS expiry notification")
         logger.info(f"[RocketChat] Room ID: {room_id}, User ID: {user_id}, Warning days: {warning_days}")
         logger.info(f"[RocketChat] Total accounts received: {len(accounts) if accounts else 0}")
+        logger.info(f"[RocketChat] Total VPS received: {len(vps_list) if vps_list else 0}")
         
-        if not accounts:
-            logger.info(f"[RocketChat] No accounts to process")
+        if not accounts and not vps_list:
+            logger.info(f"[RocketChat] No accounts or VPS to process")
             return True
         
         # Log chi tiết từng account
-        for i, acc in enumerate(accounts):
-            logger.info(f"[RocketChat] Account {i+1}: {acc}")
+        if accounts:
+            for i, acc in enumerate(accounts):
+                logger.info(f"[RocketChat] Account {i+1}: {acc}")
         
-        # Lọc tài khoản sắp hết hạn (chỉ manual accounts)
+        # Lọc tài khoản và VPS sắp hết hạn
         today = datetime.now().date()
         expiring_accounts = []
-        expired_accounts = []  # Thêm danh sách tài khoản đã hết hạn
+        expired_accounts = []
+        expiring_vps = []
+        expired_vps = []
+        
+        # Kiểm tra VPS hết hạn
+        if vps_list:
+            logger.info(f"[RocketChat] Filtering expiring and expired VPS...")
+            for vps in vps_list:
+                logger.info(f"[RocketChat] Checking VPS: {vps.get('name', 'Unknown')} - Expiry: {vps.get('expiry', 'N/A')}")
+                
+                if vps.get('expiry'):
+                    try:
+                        expiry_date = datetime.strptime(vps['expiry'], '%Y-%m-%d').date()
+                        days_left = (expiry_date - today).days
+                        logger.info(f"[RocketChat] VPS {vps.get('name')}: expiry_date={expiry_date}, days_left={days_left}")
+                        
+                        if days_left < 0:
+                            expired_vps.append({
+                                'item': vps,
+                                'days_left': days_left,
+                                'type': 'expired_vps'
+                            })
+                            logger.info(f"[RocketChat] Added to expired VPS list: {vps.get('name')} (đã hết hạn {abs(days_left)} ngày)")
+                        elif 0 <= days_left <= warning_days:
+                            expiring_vps.append({
+                                'item': vps,
+                                'days_left': days_left,
+                                'type': 'expiry_vps'
+                            })
+                            logger.info(f"[RocketChat] Added to expiring VPS list: {vps.get('name')} (còn {days_left} ngày)")
+                    except Exception as e:
+                        logger.error(f"[RocketChat] Error parsing expiry date for VPS {vps.get('name')}: {e}")
+                        continue
+            
+            logger.info(f"[RocketChat] Found {len(expiring_vps)} expiring VPS and {len(expired_vps)} expired VPS")
         
         logger.info(f"[RocketChat] Filtering expiring and expired accounts (manual only)...")
         for account in accounts:
@@ -225,19 +262,55 @@ def send_account_expiry_notification(
         
         logger.info(f"[RocketChat] Found {len(low_balance_accounts)} low balance accounts")
         
-        # Kết hợp tất cả cảnh báo
-        all_warnings = expired_accounts + expiring_accounts + low_balance_accounts
+        # Kết hợp tất cả cảnh báo (VPS + Accounts)
+        all_warnings = expired_vps + expiring_vps + expired_accounts + expiring_accounts + low_balance_accounts
         
-        logger.info(f"[RocketChat] Total warnings: {len(all_warnings)} (expired: {len(expired_accounts)}, expiry: {len(expiring_accounts)}, low_balance: {len(low_balance_accounts)})")
+        logger.info(f"[RocketChat] Total warnings: {len(all_warnings)} (expired_vps: {len(expired_vps)}, expiring_vps: {len(expiring_vps)}, expired: {len(expired_accounts)}, expiry: {len(expiring_accounts)}, low_balance: {len(low_balance_accounts)})")
         
         if not all_warnings:
             logger.info(f"[RocketChat] No warnings to send")
             return True
         
         # Tạo nội dung thông báo
-        title = f"⚠️ Cảnh báo tài khoản ({len(all_warnings)} cảnh báo)"
+        title = f"⚠️ Cảnh báo VPS/Tài khoản ({len(all_warnings)} cảnh báo)"
         
-        text = f"**Danh sách cảnh báo tài khoản:**\n\n"
+        text = f"**Danh sách cảnh báo VPS/Tài khoản:**\n\n"
+        
+        # Thông báo VPS đã hết hạn
+        if expired_vps:
+            text += f"🚨 **VPS đã hết hạn ({len(expired_vps)}):**\n"
+            for item in expired_vps:
+                vps = item['item']
+                days_left = item['days_left']
+                
+                text += f"🚨 **{vps.get('name', vps.get('id', 'Unknown'))}**\n"
+                text += f"   • IP: {vps.get('ip', 'N/A')}\n"
+                text += f"   • Provider: {vps.get('provider', 'N/A')}\n"
+                text += f"   • Ngày hết hạn: {vps.get('expiry', 'N/A')}\n"
+                text += f"   • Trạng thái: Đã hết hạn {abs(days_left)} ngày\n\n"
+        
+        # Thông báo VPS sắp hết hạn
+        if expiring_vps:
+            text += f"📅 **VPS sắp hết hạn ({len(expiring_vps)}):**\n"
+            for item in expiring_vps:
+                vps = item['item']
+                days_left = item['days_left']
+                
+                if days_left == 0:
+                    status_emoji = "🚨"
+                    status_text = "HẾT HẠN HÔM NAY!"
+                elif days_left == 1:
+                    status_emoji = "⚠️"
+                    status_text = "Hết hạn ngày mai"
+                else:
+                    status_emoji = "📅"
+                    status_text = f"Còn {days_left} ngày"
+                
+                text += f"{status_emoji} **{vps.get('name', vps.get('id', 'Unknown'))}**\n"
+                text += f"   • IP: {vps.get('ip', 'N/A')}\n"
+                text += f"   • Provider: {vps.get('provider', 'N/A')}\n"
+                text += f"   • Ngày hết hạn: {vps.get('expiry', 'N/A')}\n"
+                text += f"   • Trạng thái: {status_text}\n\n"
         
         # Thông báo tài khoản đã hết hạn
         if expired_accounts:
@@ -307,8 +380,9 @@ def send_account_expiry_notification(
         logger.info(f"[RocketChat] Text length: {len(text)} characters")
         
         # Chọn màu dựa trên mức độ nghiêm trọng
-        has_expired = len(expired_accounts) > 0  # Tài khoản đã hết hạn là nghiêm trọng nhất
+        has_expired = len(expired_accounts) > 0 or len(expired_vps) > 0  # VPS/Tài khoản đã hết hạn là nghiêm trọng nhất
         has_critical = has_expired or any(item.get('days_left') == 0 for item in expiring_accounts) or \
+                      any(item.get('days_left') == 0 for item in expiring_vps) or \
                       any(item.get('balance', 0) < 2 for item in low_balance_accounts)
         has_warning = any(item.get('days_left') <= 1 for item in expiring_accounts) or \
                      any(item.get('balance', 0) < item.get('threshold', 0) * 0.5 for item in low_balance_accounts)
